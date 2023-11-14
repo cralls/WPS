@@ -48,19 +48,19 @@ function createCategory($categoryName, $categoryFactory, $categoryRepository) {
 function getData($url, $apiToken) {
     // Initialize cURL session.
     $curl = curl_init($url);
-
+    
     // Set the Authorization header with the Bearer token.
     curl_setopt($curl, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $apiToken));
-
+    
     // Return the transfer as a string.
     curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
-
+    
     // Execute the cURL session.
     $result = curl_exec($curl);
-
+    
     // Close cURL session.
     curl_close($curl);
-
+    
     // Return the decoded JSON response.
     return json_decode($result, true);
 }
@@ -70,7 +70,7 @@ function getBrands($apiToken, $brandId = null) {
     $allBrands = []; // Array to hold all brands
     $base_url = 'https://api.wps-inc.com/brands';
     $cursor = null; // Start with no cursor
-
+    
     do {
         $url = $base_url;
         if ($brandId) {
@@ -84,15 +84,15 @@ function getBrands($apiToken, $brandId = null) {
         
         $response = getData($url, $apiToken);
         $allBrands = array_merge($allBrands, $response['data']); // Merge the current page brands with the allBrands array
-
+        
         // Check if there's a next cursor and update the cursor variable
         $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
     } while ($cursor); // Continue until there's no next cursor
-
+    
     return $allBrands;
 }
 
-function getItems($brandId, $apiToken) {
+function getItems($brandId, $apiToken, $objectManager) {
     $allItems = [];
     $base_url = "https://api.wps-inc.com/brands/{$brandId}/items";
     
@@ -108,11 +108,32 @@ function getItems($brandId, $apiToken) {
         
         $response = getData($url, $apiToken);
         
-        
         foreach($response['data'] as $item) {
-            $productResponse = getData('https://api.wps-inc.com/items/216584/product', $apiToken);
+            $attributeResponse = getData("https://api.wps-inc.com/items/{$item['id']}/attributevalues", $apiToken);
+            print_r($item); echo "\r\n\r\n"; print_r($attributeResponse); die();    
+            $magentoProduct = $objectManager->create('Magento\Catalog\Model\Product');
+            
+            // Set the attributes based on your mapping
+            $magentoProduct->setSku($item['sku']);
+            $magentoProduct->setData('manufacturer_sku', $item['supplier_product_id']);
+            $magentoProduct->setName($item['name']);
+            $magentoProduct->setPrice($item['list_price']);
+            $magentoProduct->setData('cost', $item['standard_dealer_price']);
+            $magentoProduct->setData('length', $item['length']);
+            $magentoProduct->setData('width', $item['width']);
+            $magentoProduct->setData('height', $item['height']);
+            $magentoProduct->setWeight($item['weight']);
+            $magentoProduct->setData('upc_ean', $item['upc']);
+            $magentoProduct->setData('wps_status', $item['status']);
+            $magentoProduct->setData('map_price', $item['map_price']);
+            
+            // Save the product
+            $magentoProduct->save();
+            
+            // Stop the script after creating the first product
+            die("First product created. Check Magento admin.");
         }
-        $allItems = array_merge($allItems, $response['data']); // Merge the current page brands with the allBrands array
+        $allItems = array_merge($allItems, $response['data']); 
         
         // Check if there's a next cursor and update the cursor variable
         $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
@@ -121,7 +142,7 @@ function getItems($brandId, $apiToken) {
     return $allItems;
 }
 
-$apiToken = 'cHr5L0GaX0lUTPVLt9B441lytvYkJkTcXGuyYG9C';
+$apiToken = getenv('WPS_API_KEY');
 
 // Main script execution.
 if (in_array('getBrands', $argv)) {
@@ -135,10 +156,11 @@ if (in_array('getBrands', $argv)) {
 }
 
 if (in_array('getItems', $argv)) {
-    $allBrands = getBrands($apiToken);
+    //$allBrands = getBrands($apiToken);
     
-    foreach($allBrands as $brand) {
-        $items = getItems($brand['id'], $apiToken);
+    //foreach($allBrands as $brand) {
+        $items = getItems(8, $apiToken, $objectManager);
+        //$items = getItems($brand['id'], $apiToken, $objectManager);
         sleep(5);
-    }
+    //}
 }
