@@ -113,13 +113,10 @@ function getItems($brandId, $apiToken, $objectManager) {
             
             $attributeResponses = getData("https://api.wps-inc.com/items/{$item['id']}/attributevalues", $apiToken);
             foreach($attributeResponses['data'] as $attributeResponse) {
-                // 5 = Material
                 // 13 = Size
                 // 15 = Color
-                // 48 = Finish
-                if(in_array($attributeResponse['attributekey_id'], [13, 15])) { // Only doing size/color for now
-                    
-                }
+                if($attributeResponse['attribute_id'] == 13) $magentoProduct->setSize($attributeResponse['name']);
+                if($attributeResponse['attribute_id'] == 15) $magentoProduct->setColor($attributeResponse['name']);
             }
             
             // Set the attributes based on your mapping
