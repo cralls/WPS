@@ -109,9 +109,18 @@ function getItems($brandId, $apiToken, $objectManager) {
         $response = getData($url, $apiToken);
         
         foreach($response['data'] as $item) {
-            $attributeResponse = getData("https://api.wps-inc.com/items/{$item['id']}/attributevalues", $apiToken);
-            print_r($item); echo "\r\n\r\n"; print_r($attributeResponse); die();    
             $magentoProduct = $objectManager->create('Magento\Catalog\Model\Product');
+            
+            $attributeResponses = getData("https://api.wps-inc.com/items/{$item['id']}/attributevalues", $apiToken);
+            foreach($attributeResponses['data'] as $attributeResponse) {
+                // 5 = Material
+                // 13 = Size
+                // 15 = Color
+                // 48 = Finish
+                if(in_array($attributeResponse['attributekey_id'], [13, 15])) { // Only doing size/color for now
+                    
+                }
+            }
             
             // Set the attributes based on your mapping
             $magentoProduct->setSku($item['sku']);
