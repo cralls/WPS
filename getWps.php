@@ -109,13 +109,10 @@ function getItems($brandId, $apiToken) {
         $response = getData($url, $apiToken);
         
         
-        //foreach($response['data'] as $item) {
+        foreach($response['data'] as $item) {
             $productResponse = getData('https://api.wps-inc.com/items/216584/product', $apiToken);
             print_r($productResponse); die();
-        //}
-        
-        
-        print_r($response);
+        }
         $allItems = array_merge($allItems, $response['data']); // Merge the current page brands with the allBrands array
         
         // Check if there's a next cursor and update the cursor variable
@@ -139,10 +136,6 @@ if (in_array('getBrands', $argv)) {
 }
 
 if (in_array('getItems', $argv)) {
-    
-    $productResponse = getData('https://api.wps-inc.com/attributekeys', $apiToken);
-    print_r($productResponse); die();
-    
     $allBrands = getBrands($apiToken);
     
     foreach($allBrands as $brand) {
