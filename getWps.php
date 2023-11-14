@@ -111,7 +111,6 @@ function getItems($brandId, $apiToken) {
         
         foreach($response['data'] as $item) {
             $productResponse = getData('https://api.wps-inc.com/items/216584/product', $apiToken);
-            print_r($productResponse); die();
         }
         $allItems = array_merge($allItems, $response['data']); // Merge the current page brands with the allBrands array
         
