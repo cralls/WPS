@@ -93,8 +93,11 @@ function getBrands($apiToken, $brandId = null) {
 }
 
 function getItems($brand, $apiToken, $objectManager) {
-    $allItems = [];
+    //$allItems = [];
     $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
+    
+    $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
+    
     
     $cursor = null; // Start with no cursor
     
@@ -110,6 +113,14 @@ function getItems($brand, $apiToken, $objectManager) {
         
         foreach($response['data'] as $item) {
             
+            try {
+                $existingProduct = $productRepository->get($item['sku']);
+                // If the product exists, skip to the next item
+                continue;
+            } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+                // If the product does not exist, continue with creation
+            }
+            
             // Check if Item is Available
             if(in_array($item['status'], ['NLA'])) continue;
             
@@ -119,18 +130,21 @@ function getItems($brand, $apiToken, $objectManager) {
              * Get product data for description etc..
              ************************/
             $wpsProductData = getData("https://api.wps-inc.com/items/{$item['id']}/product", $apiToken);
-            $magentoProduct->setData('description', $wpsProductData['data']['description']);
             
             /************************
              * Get product features (bullet points) for short description
              ************************/
             $wpsProductFeatureData = getData("https://api.wps-inc.com/products/{$wpsProductData['data']['id']}/features", $apiToken);
             $shortDescription = "<ul>";
-            foreach($wpsProductFeatureData['data'] as $feature) {
-                $shortDescription .= "<li>".$feature['name']."</li>";
+            $description = "<ul>";
+            foreach($wpsProductFeatureData['data'] as $key => $feature) {
+                $shortDescription .= $key < 4 ? "<li>".$feature['name']."</li>" : '';
+                $description .= "<li>".$feature['name']."</li>";
             }
             $shortDescription .= "</ul>";
+            $description .= "</ul>";
             $magentoProduct->setData('short_description', $shortDescription);
+            $magentoProduct->setData('description', $wpsProductData['data']['description']."<br>".$description);
             
             /************************
              * Get product Country
@@ -275,7 +289,7 @@ function getItems($brand, $apiToken, $objectManager) {
             // Set the attributes based on your mapping
             $magentoProduct->setSku($item['sku']);
             $magentoProduct->setData('manufacturer_sku', $item['supplier_product_id']);
-            $magentoProduct->setName(ucwords($item['name']));
+            $magentoProduct->setName(ucwords(strtolower($item['name'])));
             $magentoProduct->setPrice($item['list_price']);
             $magentoProduct->setData('cost', $item['standard_dealer_price']);
             $magentoProduct->setData('ai_length', $item['length']);
@@ -306,15 +320,17 @@ function getItems($brand, $apiToken, $objectManager) {
             
             // Stop the script after creating the first product
             echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n";
-            error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/error_log');
+            error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/var/log/wps.log');
+            
+            sleep(5); // Give the API a break
         }
-        $allItems = array_merge($allItems, $response['data']); 
+        //$allItems = array_merge($allItems, $response['data']); 
         
         // Check if there's a next cursor and update the cursor variable
         $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
     } while ($cursor); // Continue until there's no next cursor
     
-    return $allItems;
+    //return $allItems;
 }
 
 $apiToken = getenv('WPS_API_KEY');
@@ -331,12 +347,18 @@ if (in_array('getBrands', $argv)) {
 }
 
 if (in_array('getItems', $argv)) {
-    //$allBrands = getBrands($apiToken);
+    $allBrands = getBrands($apiToken);
+    $processBrands = false;
     
-    //foreach($allBrands as $brand) {
-        $brand = ['id'=>8,'name'=>'Cirius'];
+    foreach($allBrands as $brand) {
+        if ($brand['name'] === 'EBC') {
+            $processBrands = true;
+        }
+        
+        if (!$processBrands) {
+            continue;
+        }
+        
         $items = getItems($brand, $apiToken, $objectManager);
-        //$items = getItems($brand, $apiToken, $objectManager);
-        sleep(5);
-    //}
+    }
 }
