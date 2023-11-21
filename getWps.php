@@ -193,6 +193,7 @@ function getItems($brand, $apiToken, $objectManager) {
                 }
                 
                 // Add image to media gallery
+                echo $newFileName;
                 $magentoProduct->addImageToMediaGallery($newFileName, ['image', 'small_image', 'thumbnail'], false, false);
             }
             
@@ -302,6 +303,7 @@ function getItems($brand, $apiToken, $objectManager) {
             if($item['mapp_price'] > 0) $magentoProduct->setData('map_price', $item['mapp_price']);
             $magentoProduct->setData('visibility', 4);
             $magentoProduct->setData('status', 1);
+            $magentoProduct->setData('wps_item_id', $item['id']);
             $magentoProduct->setData('free_shipping', 169);
             $magentoProduct->setAttributeSetId(12);
             $magentoProduct->setWebsiteIds([1]);
@@ -351,7 +353,7 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'EBC') {
+        if ($brand['name'] === 'ALL BALLS') {
             $processBrands = true;
         }
         
