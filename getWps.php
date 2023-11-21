@@ -166,7 +166,14 @@ function getItems($brand, $apiToken, $objectManager) {
                 $imageContent = file_get_contents($imageUrl);
                 
                 $localDir = $mediaDirectory->getAbsolutePath('catalog/product');
-                $newFileName = $localDir . basename($imageUrl);
+                // Check and modify the file extension if necessary
+                $pathInfo = pathinfo($imageUrl);
+                if (strtolower($pathInfo['extension']) === 'jfif') {
+                    $pathInfo['extension'] = 'jpg';
+                    $pathInfo['basename'] = $pathInfo['filename'] . '.' . $pathInfo['extension'];
+                }
+                $newFileName = $localDir . $pathInfo['basename'];
+                
                 file_put_contents($newFileName, $imageContent);
                 
                 // Resize image
@@ -193,7 +200,6 @@ function getItems($brand, $apiToken, $objectManager) {
                 }
                 
                 // Add image to media gallery
-                echo $newFileName;
                 $magentoProduct->addImageToMediaGallery($newFileName, ['image', 'small_image', 'thumbnail'], false, false);
             }
             
