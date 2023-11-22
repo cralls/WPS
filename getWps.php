@@ -341,6 +341,40 @@ function getItems($brand, $apiToken, $objectManager) {
     //return $allItems;
 }
 
+function getInventory($apiToken, $objectManager) {
+    $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
+    $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
+    $productCollection->addAttributeToSelect('wps_item_id')
+    ->addFieldToFilter('wps_item_id', ['gt' => 0]);
+    
+    foreach ($productCollection as $product) {
+        $inventoryUrl = "https://api.wps-inc.com/inventory?filter[item_id]={$product->getWpsItemId()}";
+        $inventoryData = getData($inventoryUrl, $apiToken);
+        
+        $stockChange = $objectManager->get('Magestore\InventorySuccess\Model\StockActivity\StockChange');
+        
+        $warehouseId = 5;
+        $productId = $product->getId();
+        $qtyChange = $inventoryData['data'][0]['total'];
+            
+        $stockChange->update($warehouseId, $productId, $qtyChange);
+        
+        $stockItem = $stockRegistry->getStockItem($product->getId());
+        $totalQty = $inventoryData['data'][0]['total'];
+        
+        if ($totalQty > 0) {
+            $stockItem->setIsInStock(true);
+        } else {
+            $stockItem->setIsInStock(false);
+        }
+        
+        $stockRegistry->updateStockItemBySku($product->getSku(), $stockItem);
+        
+        // Echo the SKU of the product that was updated
+        echo "Updated product SKU: " . $product->getSku() . ", Stock Status: " . ($totalQty > 0 ? "In Stock" : "Out of Stock") . "\n";
+    }
+}
+
 $apiToken = getenv('WPS_API_KEY');
 
 // Main script execution.
@@ -369,4 +403,8 @@ if (in_array('getItems', $argv)) {
         
         $items = getItems($brand, $apiToken, $objectManager);
     }
+}
+
+if (in_array('getInventory', $argv)) {
+    getInventory($apiToken, $objectManager);
 }
