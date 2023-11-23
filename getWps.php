@@ -115,6 +115,15 @@ function getItems($brand, $apiToken, $objectManager) {
             
             try {
                 $existingProduct = $productRepository->get($item['sku']);
+                
+                // Check if wps_item_id is set, if not, update it
+                if ($existingProduct->getWpsItemId() == '') {
+                    echo ("Working on ".$item['sku']."\r\n");
+                    $existingProduct->setWpsItemId($item['id']);
+                    $productRepository->save($existingProduct);
+                    echo ( "Set wps_item_id for ".$existingProduct->getSku()." to ".$existingProduct->getWpsItemId()."\r\n\r\n");
+                }
+                
                 // If the product exists, skip to the next item
                 continue;
             } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
@@ -327,10 +336,10 @@ function getItems($brand, $apiToken, $objectManager) {
             }
             
             // Stop the script after creating the first product
-            echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n";
+            echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n\r\n";
             error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/var/log/wps.log');
             
-            sleep(5); // Give the API a break
+            sleep(1); // Give the API a break
         }
         //$allItems = array_merge($allItems, $response['data']); 
         
@@ -393,9 +402,9 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'ALL BALLS') {
+        //if ($brand['name'] === 'ALL BALLS') {
             $processBrands = true;
-        }
+        //}
         
         if (!$processBrands) {
             continue;
