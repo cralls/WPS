@@ -1,0 +1,76 @@
+Uptime mgt:     20+07:43:59                                                                                                                           Hitrate n:       10       79       79
+Uptime child:   20+07:44:01                                                                                                                              avg(n):   0.0110   0.0886   0.0886
+
+    NAME                                                                                                     CURRENT        CHANGE       AVERAGE        AVG_10       AVG_100      AVG_1000
+MGT.uptime                                                                                               20+07:43:59
+MAIN.uptime                                                                                              20+07:44:01
+MAIN.sess_conn                                                                                               2899500          3.00          1.65          1.33          1.28          1.28
+MAIN.client_req_400                                                                                               35          0.00          0.00          0.00          0.00          0.00
+MAIN.client_req                                                                                              2895817          3.00          1.65          1.33          1.28          1.28
+MAIN.cache_hit                                                                                                409308          0.00          0.23          0.02          0.13          0.13
+MAIN.cache_hit_grace                                                                                           28260          0.00          0.02          0.00          0.00          0.00
+MAIN.cache_hitmiss                                                                                             61146          0.00          0.03          0.02          0.05          0.05
+MAIN.cache_miss                                                                                               691332          1.00          0.39          0.35          0.40          0.40
+MAIN.backend_conn                                                                                              47587          0.00          0.03          0.00          0.00          0.00
+MAIN.backend_unhealthy                                                                                            56          0.00          0.00          0.00          0.00          0.00
+MAIN.backend_reuse                                                                                           2419545          2.00          1.38          1.22          1.13          1.13
+MAIN.backend_recycle                                                                                         2451114          3.00          1.40          1.31          1.15          1.15
+MAIN.backend_retry                                                                                                 2          0.00          0.00          0.00          0.00          0.00
+MAIN.fetch_head                                                                                                 2212          0.00          0.00          0.00          0.00          0.00
+MAIN.fetch_length                                                                                            1054147          2.00          0.60          0.71          0.54          0.54
+MAIN.fetch_chunked                                                                                           1358534          1.00          0.77          0.60          0.61          0.61
+MAIN.fetch_304                                                                                                 52257          0.00          0.03          0.00          0.00          0.00
+MAIN.fetch_failed                                                                                                 88          0.00          0.00          0.00          0.00          0.00
+MAIN.pools                                                                                                         2          0.00           .            2.00          2.00          2.00
+MAIN.threads                                                                                                     200          0.00           .          200.00        200.00        200.00
+MAIN.threads_limited                                                                                               1          0.00          0.00          0.00          0.00          0.00
+MAIN.threads_created                                                                                            1463          0.00          0.00          0.00          0.00          0.00
+MAIN.threads_destroyed                                                                                          1263          0.00          0.00          0.00          0.00          0.00
+MAIN.busy_sleep                                                                                                 7386          0.00          0.00          0.00          0.00          0.00
+MAIN.busy_wakeup                                                                                                7388          0.00          0.00          0.00          0.00          0.00
+MAIN.sess_queued                                                                                                1421          0.00          0.00          0.00          0.00          0.00
+MAIN.n_object                                                                                                  82084          0.00           .        82084.83      82084.10      82084.10
+MAIN.n_objectcore                                                                                              82116          0.00           .        82117.01      82116.39      82116.39
+MAIN.n_objecthead                                                                                              59783          0.00           .        59781.59      59775.96      59775.96
+MAIN.n_backend                                                                                                     1          0.00           .            1.00          1.00          1.00
+MAIN.n_expired                                                                                                239700          0.00          0.14          0.15          0.14          0.14
+MAIN.n_lru_nuked                                                                                              277362          1.00          0.16          0.27          0.19          0.19
+MAIN.n_lru_limited                                                                                                31          0.00          0.00          0.00          0.00          0.00
+MAIN.s_sess                                                                                                  2899500          3.00          1.65          1.33          1.28          1.28
+MAIN.s_pass                                                                                                  1747649          2.00          1.00          0.96          0.76          0.76
+MAIN.s_fetch                                                                                                 2438981          3.00          1.39          1.31          1.15          1.15
+MAIN.s_synth                                                                                                   47532          0.00          0.03          0.00          0.00          0.00
+MAIN.s_req_hdrbytes                                                                                             2.92G         1.86K         1.75K       912.74          1.29K         1.29K
+MAIN.s_req_bodybytes                                                                                           37.06M         0.00         22.13          0.14         14.90         14.90
+MAIN.s_resp_hdrbytes                                                                                            1.14G         1.02K       696.72        491.84        534.06        534.06
+MAIN.s_resp_bodybytes                                                                                         136.65G       143.03K        81.60K       123.37K        90.87K        90.87K
+MAIN.sess_closed                                                                                             2832139          3.00          1.61          1.33          1.28          1.28
+MAIN.sess_closed_err                                                                                           42056          0.00          0.02          0.00          0.00          0.00
+MAIN.sess_readahead                                                                                               28          0.00          0.00          0.00          0.00          0.00
+MAIN.backend_req                                                                                             2467143          2.00          1.41          0.90          1.10          1.10
+MAIN.n_vcl                                                                                                         1          0.00           .            1.00          1.00          1.00
+MAIN.bans                                                                                                        631          0.00           .          631.00        631.00        631.00
+MAIN.vmods                                                                                                         1          0.00           .            1.00          1.00          1.00
+MAIN.n_gzip                                                                                                  1364115          2.00          0.78          0.61          0.61          0.61
+MAIN.n_gunzip                                                                                                 904826          2.00          0.52          0.53          0.48          0.48
+MAIN.n_test_gunzip                                                                                            250189          0.00          0.14          0.00          0.02          0.02
+SMA.s0.c_req                                                                                                 3011400          2.00          1.72          0.70          1.45          1.47
+SMA.s0.c_fail                                                                                                 379873          0.00          0.22          0.04          0.14          0.15
+SMA.s0.c_bytes                                                                                                 30.32G        16.69K        18.11K         7.34K        16.01K        16.29K
+SMA.s0.c_freed                                                                                                 28.32G         0.00         16.91K         4.70K        15.23K        15.58K
+SMA.s0.g_alloc                                                                                                177578          2.00           .       177575.47     177574.72     177574.71
+SMA.s0.g_bytes                                                                                                  2.00G        16.69K          .            2.00G         2.00G         2.00G
+SMA.s0.g_space                                                                                                 46.69K       -16.69K          .           70.48K        81.15K        81.36K
+SMA.Transient.c_req                                                                                          6624502          7.98          3.77          2.74          2.92          2.91
+SMA.Transient.c_bytes                                                                                         104.57G       109.61K        62.44K        59.64K        70.73K        70.73K
+SMA.Transient.c_freed                                                                                         104.52G       109.61K        62.42K        59.73K        70.77K        70.77K
+SMA.Transient.g_alloc                                                                                          51888          0.00           .        51888.61      51891.63      51891.74
+SMA.Transient.g_bytes                                                                                          47.48M         0.00           .           47.48M        47.48M        47.48M
+VBE.boot.default.happy                                                                                    ffffffffff     VVVVVVVVVVVVVVVVVVVVVVVV
+VBE.boot.default.bereq_hdrbytes                                                                                 2.68G       712.58          1.60K       742.99          1.05K         1.05K
+VBE.boot.default.bereq_bodybytes                                                                               37.05M         0.00         22.12          0.00          8.77          9.08
+VBE.boot.default.beresp_hdrbytes                                                                                1.34G       678.65        817.33        432.31        655.46        660.22
+VBE.boot.default.beresp_bodybytes                                                                              64.88G         0.00         38.75K        36.96K        51.33K        51.46K
+VBE.boot.default.conn                                                                                              3          1.00           .            2.41          2.63          2.64
+VBE.boot.default.req                                                                                         2467207          2.00          1.41          0.87          1.09          1.09
+VBE.boot.default.unhealthy                                                                                        56          0.00          0.00          0.00          0.00          0.00
