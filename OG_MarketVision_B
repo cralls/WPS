@@ -1,0 +1,1139 @@
+ // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Lij_MC 
+
+// With Special Thanks to Everyone who has gone before me, who have both allowed me and given me permission to bring my version of Market Cipher to the World 
+// Especially LazyBear for his amazing Wave Trend Oscillator and for Aevir, falconCoin, vumanchu, Crypto_Spike and others who have freely brought MarketCipher to the Tradingview Community 
+// Also special mention to RicardoSantos for his Divergence script
+
+// MarketVision B - My take on MarketCipher B / Market Cipher B, Ive just put outlines on the Wave Trend to add to the Visual Appeal and Added a Trend Meter and a few more options for the Oscillators 
+// Nice To Look At
+// Oscillator 1 Choose Between - RSI, MFI, Ultimate Oscillator and Williams %R (Shifted up by 100)
+// For Stochastics Choose Between Standard and RSI Stochastics and for the source you can choose On Balance Volume  
+// Wave Trend 
+// Money Flow 
+// Trend Meter & Signals Bar
+// Divergences are marked, However they are easy to spot and it is better to train your eyes to spot them before the indicator marks them out
+// Lots of Alerts and Loads of ways to trade using MarketVision
+
+
+//@version=3
+
+study(title="MarketVision B")
+
+// 🐮  🐻
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+WTSetups            = input(true, "----------- Show Setups - Wave Trend Filtered by Trend - Dots @ 106 -----------")
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Oscillator 1
+
+NonHA   = tickerid(syminfo.prefix, ticker)
+Close   = security(NonHA, period, close) 
+
+// MFI Calculations
+
+mfi (PriceSrc, PeriodLength) =>
+    PositiveMoneyFlow = sum(volume * (change(PriceSrc) <= 0 ? 0 : PriceSrc), PeriodLength)
+    NegativeMoneyFlow = sum(volume * (change(PriceSrc) >= 0 ? 0 : PriceSrc), PeriodLength)
+    rsi(PositiveMoneyFlow, NegativeMoneyFlow)
+
+// Ultimate Oscillator Calculations
+
+UltOsclength1         = 7     //input(7,      "Oscillator 2 - Length 1", minval=1)
+UltOsclength2         = 14    //input(14,     "Oscillator 2 - Length 2", minval=1) 
+UltOsclength3         = 28    //input(28,     "Oscillator 2 - Length 3", minval=1)
+
+
+UltOscaverage(UltOscbp, UltOsctr_, UltOsclength) => sum(UltOscbp, UltOsclength) / sum(UltOsctr_, UltOsclength)
+UltOschigh_           = max(high, close[1])
+UltOsclow_            = min(low, close[1])
+UltOscbp              = close - UltOsclow_
+UltOsctr_             = UltOschigh_ - UltOsclow_
+UltOscavg7            = UltOscaverage(UltOscbp, UltOsctr_, UltOsclength1)
+UltOscavg14           = UltOscaverage(UltOscbp, UltOsctr_, UltOsclength2)
+UltOscavg28           = UltOscaverage(UltOscbp, UltOsctr_, UltOsclength3)
+UltOscOut             = 100 * (4*UltOscavg7 + 2*UltOscavg14 + UltOscavg28)/7
+UltOscColor           = UltOscOut > UltOscOut[1]? lime : red
+
+
+// Williams % R Calculations
+
+WilliamsPercentR(PriceSrc, PeriodLength) =>
+	max = highest(PeriodLength)
+	min = lowest( PeriodLength)
+	100 * (PriceSrc - max) / (max - min)
+	
+// percentR = _pr(length)
+
+// RSI Signal Line Calculations
+
+RSILength        = 13
+RSISigLength     = 21 
+RSI1             = rsi(Close, RSILength)
+
+variant_linear_regression_sma(src,len) =>
+    LRSMAx       = n
+    LRSMAy       = src
+    LRSMAx_      = sma(LRSMAx,   len)
+    LRSMAy_      = sma(LRSMAy,   len)
+    LRSMAmx      = stdev(LRSMAx, len)
+    LRSMAmy      = stdev(LRSMAy, len)
+    LRSMAc       = correlation(LRSMAx, LRSMAy, len)
+    LRSMAslope   = LRSMAc * (LRSMAmy / LRSMAmx)
+    LRSMAinter   = LRSMAy_ - LRSMAslope * LRSMAx_
+    LRSMALinReg1 = 0.0
+    LRSMALinReg1 := LRSMAx * LRSMAslope + LRSMAinter
+    
+LinReg = variant_linear_regression_sma(RSI1,RSISigLength)
+
+
+// Alerts & Conditions - RSI Signal Line Color Change
+
+RSISigLineGreenChange = (LinReg > LinReg[1]) and (LinReg[1] < LinReg[2])
+RSISigLineRedChange   = (LinReg < LinReg[1]) and (LinReg[1] > LinReg[2])
+
+alertcondition(RSISigLineGreenChange,                                title='Alert - RSI Signal Line Change to Green',               message='Green - Color Change - RSI Signal Line - MarketVision B')
+alertcondition(RSISigLineRedChange,                                  title='Alert - RSI Signal Line Change to Red',                 message='Red - Color Change - RSI Signal Line - MarketVision B')
+alertcondition(RSISigLineGreenChange or RSISigLineRedChange,         title='Alert - RSI Signal Line Change Color',                  message='Color Change - RSI Signal Line - MarketVision B')
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+ShowOscillator1       = input(true,    "Oscillator 1 -----------")
+
+
+showdivs1             = input(false,   "Oscillator 1 - Regular Divergences")
+showhidden1           = input(false,   "Oscillator 1 - Hidden  Divergences")
+// showlabels2         = input(false,  "Oscillator 1 - Divergence Labels")
+
+DivVertOffsetOsc1     = 2  // input(2,     "Ultimate Oscillator - Vertical Offset For Divergence Lines", minval=0, maxval=10)
+
+DivOffsetInput1       = input(true,     "Oscillator 1 - Divergences Offset 2 Bars - Earliest Entry Point")
+DivOffset1            = DivOffsetInput1? 0 : -2
+
+ShowOsc1TrendMeter    = input(true,   "Oscillator 1 - Trend Meter - Line @ +50")
+
+ShowOsc1TrendMeterColorIn = input(defval= "Oscillator 1 Above or Below Mid / 50 Line", title="Oscillator 1 - Trend Meter", options=["MACD Crossover - Fast - 8, 21, 5", "Oscillator 1 Above or Below Mid / 50 Line", "RSI Signal Line Cross - Set Value - RSI 13, Signal Line (Linear Regression) 21"])
+
+Oscillator1In         = input(defval=   "RSI",                                         title="Oscillator 1 - Type",        options=["MFI", "RSI", "RSI.Signal Line - Set Value - RSI 13, Signal Line (Linear Regression) 21", "Ultimate Oscillator - Set Value - 7, 14, 28", "Williams % R (Shifted Up by 100)"])
+
+Oscillator1LengthIn   = input(14,       "Oscillator 1 - Length", minval=1)
+
+Oscillator1Source     = input(defval=close, title="Oscillator 1 - Source (RSI and MFI)", type=source ) 
+
+Oscillator1OBOSIn     = input(defval= "70 / 30", title="Oscillator 1 - OB / OS",         options=["OFF", "70 / 30", "75 / 25", "80 / 20", "85 / 15", "90 / 10", "95 / 5"])
+
+Oscillator1OB         = Oscillator1OBOSIn=="70 / 30" ? 70 :  Oscillator1OBOSIn=="75 / 25" ? 75 : Oscillator1OBOSIn=="80 / 20" ? 80 : Oscillator1OBOSIn=="90 / 10" ? 90 : Oscillator1OBOSIn=="95 / 5" ? 95 : 100
+
+Oscillator1OS         = Oscillator1OBOSIn=="70 / 30" ? 30 :  Oscillator1OBOSIn=="75 / 25" ? 25 : Oscillator1OBOSIn=="80 / 20" ? 20 : Oscillator1OBOSIn=="90 / 10" ? 10 : Oscillator1OBOSIn=="95 / 5" ?  5 : 0
+
+
+Oscillator1           = Oscillator1In == "Ultimate Oscillator - Set Value - 7, 14, 28" ? UltOscOut : Oscillator1In == "MFI" ?  mfi(Oscillator1Source, Oscillator1LengthIn) : Oscillator1In == "RSI" ? rsi(Oscillator1Source, Oscillator1LengthIn) : Oscillator1In == "Williams % R (Shifted Up by 100)" ? WilliamsPercentR(Oscillator1Source, Oscillator1LengthIn) + 100 : rsi(Close, 13)
+
+// Oscillator 1 Plotted with Trend Bar under Wave Trend with Trend Meter 1 for Clarity so that it is Not Over Shadowed by Wave Trend 
+
+// Oscillator 1
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Stochastics
+
+ShowStochastic      = input(true,  "Stochastic -----------")
+showdivs2           = input(false, "Stochastic - Regular Divergences")
+showhidden2         = input(false, "Stochastic - Hidden  Divergences")
+// showlabels1         = input(false, "Stochastic K - Divergence Labels")
+
+// showStochSetups     = input(false, "Show Stochastic Setups - Dots @ 105 Level")
+
+DivVertOffsetStoch  = 2  //input(2,     "Stochastic K - Vertical Offset For Divergence Lines", minval=0, maxval=10)
+
+DivOffsetInput2     = input(true,  "Stochastic - Divergences Offset 2 Bars - Earliest Entry Point")
+DivOffset2          = DivOffsetInput2? 0 : -2
+
+FillStoch           = true   //input(true,  "Stochastic K - Fill K D Area")
+
+StochTranspIn       = input(45,    "Stochastic - Brightness",  minval = 0, maxval = 100, step = 5)
+StochTransp         = 100 - StochTranspIn
+StochOutlineTransp  = 110 - StochTranspIn
+
+StochTypeIn         = input(defval= "Stochastic - Standard", title="Stochastic - Type", options=["Stochastic - Standard", "RSI Stochastic"]) //, "Ehlers Stochastic CG Oscillator (Shifted Up & Squeezed)"])  
+
+StochShowIn         = input(defval= "K and D", title="Stochastic - Show", options=["K and D", "K Only", "D Only", "Double Stochastic - K and D + Long Term RSI Stochastic K - Set Value: 14, 14, 3, 3", "Double Stochastic - K and D + Long Term Stochastic D - Set Value: 21, 4, 10"])  
+
+StochSourceIn       = input(defval= "Volume - On Balance Volume",   title="Stochastic / RSI Stochastic - Source", options=["Price", "Volume - On Balance Volume", "Volume - On Balance Volume - Locked to Standard Candles"])  
+
+StochKIn            = input(6,     "Stochastic - K") 
+StochDIn            = input(3,     "Stochastic - D")
+StochSmoothingIn    = input(3,     "Stochastic - Smoothing")
+
+
+RSIStochRSILengthIn = input(13,    "RSI Stochastic - RSI")
+RSIStochLengthIn    = input(10,    "RSI Stochastic - Length")
+RSIStochKIn         = input(3,     "RSI Stochastic - K Smoothing") 
+RSIStochDIn         = input(3,     "RSI Stochastic - D Smoothing")
+
+OBVSource           = StochSourceIn=="Volume - On Balance Volume - Locked to Standard Candles" ? Close : close
+
+OBV                 = cum(sign(change(OBVSource)) * volume)
+
+
+// OBVAccDist    = OBVSource=="Open" ? cum(volume * ((close - open)/(high-low))) : cum(volume * ((close - nz(close[1]))/(high - low)))
+
+
+StochSource         = StochSourceIn=="Price" ? close : OBV
+StochHHSource       = StochSourceIn=="Price" ? high  : OBV
+StochLLSource       = StochSourceIn=="Price" ? low   : OBV
+
+//Calculation RSI Stochastic
+
+RSIForStoch         = rsi(StochSource, RSIStochRSILengthIn)
+RSIStochK           = sma(stoch(RSIForStoch, RSIForStoch, RSIForStoch, RSIStochLengthIn), RSIStochKIn)
+RSIStochD           = sma(RSIStochK, RSIStochDIn)
+
+// Calculation for Stochastic
+
+StochHH             = highest(StochHHSource, StochKIn)
+StochLL             = lowest( StochLLSource, StochKIn)
+StochK              = sma((   StochSource-StochLL)/(StochHH-StochLL)*100, StochSmoothingIn)
+StochD              = sma(    StochK,        StochDIn)
+
+// Calculation for Double Stochastic
+
+DoubleStochKIn            = 21  //input(21 ,   "Double Stochastic - K") 
+DoubleStochDIn            = 4   //input(4,     "Double Stochastic - D")
+DoubleStochSmoothingIn    = 10  //input(10,    "DoubleStochastic - Smoothing")
+
+DoubleStochHH             = highest(high, DoubleStochKIn)
+DoubleStochLL             = lowest( low,  DoubleStochKIn)
+DoubleStochK              = sma((   close-DoubleStochLL)/(DoubleStochHH-DoubleStochLL)*100, DoubleStochSmoothingIn)
+DoubleStochD              = sma(    DoubleStochK,        DoubleStochDIn)
+
+// Calculation Double RSI Stochastic Long Term K
+
+DoubleRSIStochRSILengthIn = 14 // input(14,    "Double RSI Stochastic - RSI")
+DoubleRSIStochLengthIn    = 14 // input(14,    "Double RSI Stochastic - Length")
+DoubleRSIStochKIn         = 3  // input(3,     "Double RSI Stochastic - K Smoothing") 
+DoubleRSIStochDIn         = 3  // input(3,     "Double RSI Stochastic - D Smoothing")
+
+DoubleRSIForStoch         = rsi(close, DoubleRSIStochRSILengthIn)
+DoubleRSIStochK           = sma(stoch(DoubleRSIForStoch, DoubleRSIForStoch, DoubleRSIForStoch, DoubleRSIStochLengthIn), DoubleRSIStochKIn)
+DoubleRSIStochD           = sma(DoubleRSIStochK, DoubleRSIStochDIn)
+
+// Stochastic Outputs
+
+StochKOut           = (StochTypeIn=="Stochastic - Standard") ?  StochK : RSIStochK
+StochDOut           = (StochTypeIn=="Stochastic - Standard") ?  StochD : RSIStochD 
+
+
+WhichStoch          = (StochShowIn=="D Only") ? StochDOut : (StochShowIn=="K Only") ? StochKOut : StochDOut
+
+StochFillColor      = StochKOut > StochDOut and FillStoch? #82BCFF : StochKOut < StochDOut and FillStoch? #214DAD : na
+
+
+SingleStochColor = (StochShowIn=="K Only") and StochKOut > StochDOut ? #82BCFF : (StochShowIn=="K Only") and StochKOut < StochDOut ? #214DAD : WhichStoch > WhichStoch[1]? #82BCFF : #214DAD
+
+// SingleStochColor = (StochShowIn=="K Only") and StochKOut > StochDOut ? #00FF00E6 : (StochShowIn=="K Only") and StochKOut < StochDOut ? color(red, 35) : WhichStoch > WhichStoch[1]? #00FF00E6 : color(red, 35)  // Original Colors v1564
+
+StochFillA = plot(ShowStochastic and ((StochShowIn=="K and D") or (StochShowIn=="Double Stochastic - K and D + Long Term RSI Stochastic K - Set Value: 14, 14, 3, 3" or StochShowIn=="Double Stochastic - K and D + Long Term Stochastic D - Set Value: 21, 4, 10")) ?  StochKOut  : na, color=#82BCFF, linewidth=1, transp=StochOutlineTransp,      title="Stochastic - K")
+StochFillB = plot(ShowStochastic ?                                                                                                             WhichStoch : na, color=SingleStochColor, linewidth=3, transp=StochOutlineTransp,      title="Stochastic - K or D - Thick & Color Changing")
+
+fill(StochFillA, StochFillB, color=StochFillColor, transp=StochTransp, title= "Stochastic Fill")
+
+plot(ShowStochastic and (StochShowIn=="Double Stochastic - K and D + Long Term RSI Stochastic K - Set Value: 14, 14, 3, 3") ?  DoubleRSIStochK  : StochShowIn=="Double Stochastic - K and D + Long Term Stochastic D - Set Value: 21, 4, 10" ?                        DoubleStochD : na, color=#4169E1, linewidth=1, transp=StochOutlineTransp - 10, title="Stochastic - Double Stochastic - Long Term K or D")
+
+
+// Original Colors v1564
+
+// StochFillColor      = StochKOut > StochDOut and FillStoch? lime : StochKOut < StochDOut and FillStoch? red : na
+// SingleStochColor    = WhichStoch > WhichStoch[1]?       #00FF00 : red   // #00FF00E6 : color(red, 35)
+// StochFillA = plot(ShowStochastic and (StochShowIn=="K and D") ?  StochKOut  : na, color=lime,             linewidth=1, transp=StochOutlineTransp, title="Stochastic - K")
+// StochFillB = plot(ShowStochastic ?                               WhichStoch : na, color=SingleStochColor, linewidth=3, transp=StochOutlineTransp, title="K or D - Thick & Color Changing")
+
+
+StochasticsPosCross = crossover( StochKOut, StochDOut)
+StochasticsNegCross = crossunder(StochKOut, StochDOut)
+
+alertcondition(StochasticsPosCross,                                    title='Alert - Stochastics K D Pos X',                       message='Stochastics K D Pos X - MarketVision B')
+alertcondition(StochasticsNegCross,                                    title='Alert - Stochastics K D Neg X',                       message='Stochastics K D Neg X - MarketVision B')
+alertcondition(StochasticsPosCross  or StochasticsNegCross,            title='Alert - Stochastics K D Pos or Neg X',                message='Stochastics K D Pos or Neg X - MarketVision B')
+
+
+StochasticsDPositive  = StochDOut > StochDOut[1]
+StochasticsDPosChange =     StochasticsDPositive and not StochasticsDPositive[1]
+StochasticsDNegChange = not StochasticsDPositive and     StochasticsDPositive[1]
+
+alertcondition(StochasticsDPosChange,                                  title='Alert - Stochastics D Turns Up',                      message='Stochastics D - Turns Up - MarketVision B')
+alertcondition(StochasticsDNegChange,                                  title='Alert - Stochastics D Turns Down',                    message='Stochastics D - Turns Down - MarketVision B')
+alertcondition(StochasticsDPosChange  or StochasticsDNegChange,        title='Alert - Stochastics D Turns Up or Down',              message='Stochastics D - Turns Up or Down - MarketVision B')
+
+
+// Stochastics
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Wave Trend
+
+ShowWaveTrend         = input(true,              "Wave Trend -----------")
+WTLighterColor        = input(false,             "Wave Trend - Lighter Color Scheme")
+WTShadeArea           = input(true,              "Wave Trend - Shade Entire Area")
+WTShowZeroCrossing    = input(false,              "Wave Trend - Show Zero Crossings")
+WTShowOBOSDuplication = input(true,              "Wave Trend - Show Duplication of OB/OS Crossings in Inner Region of Wave")
+
+showdivs3             = input(true,              "Wave Trend - Regular Divergences")
+showhidden3           = input(true,              "Wave Trend - Hidden  Divergences")
+// showlabels3        = input(false,             "Wave Trend - Divergence Labels")
+
+DivOffsetInput3       = input(true,              "Wave Trend - Divergences Offset 2 Bars - Earliest Entry Point")
+DivOffset3            = DivOffsetInput3? 0 : -2
+
+ShowWaveTrendDelta    = input(true,              "Wave Trend - Delta (Yellow Wave = Wave1 - Wave2) -----------")
+
+ShowWTDeltOutlineOnly = input(false,             "Wave Trend - Delta - Show Outline ONLY")
+
+showdivs4             = input(true,              "Wave Trend - Delta - Regular Divergences")
+showhidden4           = input(true,              "Wave Trend - Delta - Hidden  Divergences")
+
+DivOffsetInput4       = input(true,              "Wave Trend - Delta - Divergences Offset 2 Bars - Earliest Entry Point")
+DivOffset4            = DivOffsetInput4? 0 : -2
+
+DivVertOffsetWT       = 3                         // input(6,     "Wave Trend - Vertical Offset For Divergence Lines", minval=0, maxval=10)
+
+ap                    = input(defval=hlc3, title="Wave Trend - Source", type=source ) 
+n1                    = input(9,                 "Wave Trend - Channel Length")
+n2                    = input(12,                "Wave Trend - Average Length")
+
+WTOBOSIn              = input(50,                "Wave Trend - Over Bought / Over Sold + -")
+WTVOBVOSIn            = input(60,                "Wave Trend - Very Very Over Bought / Over Sold + -")
+
+WTOB                  =     WTOBOSIn
+WTOS                  = 0 - WTOBOSIn
+WTVOB                 =     WTVOBVOSIn
+WTVOS                 = 0 - WTVOBVOSIn
+
+
+WTobLevel1Color = (WTVOB == 50) or (WTVOB == 60) ? 75 : 15 //#4CAF50 : #4CAF50  //color(green,75) : color(green,15)
+
+WTobLevel2Color = (WTOB == 50) or (WTOB == 60) ? color(green,75) : color(green,15)
+
+// WTobLevel1Color = (WTobLevel1 == 50) or (WTobLevel1 == 60) ? #4CAF50 : #4CAF50  //color(green,75) : color(green,15)
+// WTobLevel2Color = (WTobLevel2 == 50) or (WTobLevel2 == 60) ? color(green,75) : color(green,15)
+
+TrendFilterPlus  = (ema(close,15) > ema(close,20)) and (ema(close,20) > ema(close,30)) and (ema(close,30) > ema(close,40)) and (ema(close,40) > ema(close,50)) ? 1 : 0 
+TrendFilterMinus = (ema(close,15) < ema(close,20)) and (ema(close,20) < ema(close,30)) and (ema(close,30) < ema(close,40)) and (ema(close,40) < ema(close,50)) ? 1 : 0 
+
+
+esa = ema(ap, n1)
+d   = ema(abs(ap - esa), n1)
+ci  = (ap - esa) / (0.015 * d)
+tci = ema(ci, n2)
+ 
+wt1 = tci
+wt2 = sma(wt1,3)
+
+YellowWave = (wt1-wt2)
+
+
+WT1PosZeroCross        = crossover( wt1, 0) ? 1 : 0
+WT1NegZeroCross        = crossunder(wt1, 0) ? 1 : 0
+
+
+YellowWavePosZeroCross = crossover( (wt1-wt2), 0) ? 1 : 0
+YellowWaveNegZeroCross = crossunder((wt1-wt2), 0) ? 1 : 0
+
+YellowWaveAboveZero    = (wt1-wt2) > 0 ? 1 : 0
+
+
+W2Color                = not WTLighterColor ? color(#4166F5, 35) : color(#50989f, 65)
+
+WTWaveOnlyColor        = WTShadeArea? na : wt1 > wt2 and WTLighterColor ? color(#73C2FB, 85) : wt1 > wt2 and not WTLighterColor ? color(#73C2FB, 50) : W2Color
+
+
+WTFillB = plot(ShowWaveTrend?                                             wt2     : na,  color=#1E90FF,                            transp=30, title="Wave Trend - WT 2 - Outline - Blue Wave")
+WTFillA = plot(ShowWaveTrend?                                             wt1     : na,  color=#73C2FB,                            transp=10, title="Wave Trend - WT 1 - Outline - Light Blue Wave")
+
+fill(WTFillA, WTFillB, color = WTWaveOnlyColor, title = "Wave Trend - Wave Only Fill Color")
+
+
+WTDeltaThickOutlineColor = (wt1 - wt2) > (wt1[1] - wt2[1]) ? color(#FFD608, 25) : color(#FF7C0AE5, 23)  // #FFD608D8 : #FF7C0AE5 line thickness 2
+WTDeltaAreaColor         = (wt1 - wt2) > (wt1[1] - wt2[1]) ? #FFF600AE : #FFD900C1  // #FFDF00A5
+WTDeltaColor             = ShowWTDeltOutlineOnly ? WTDeltaThickOutlineColor : WTDeltaAreaColor
+WTDeltaStyle             = ShowWTDeltOutlineOnly ?   2 : 4
+
+plot(ShowWaveTrend and WTShadeArea?                                       wt1     : na,  color=#73C2FB,                  style=4,  transp=60, title="Wave Trend - WT 1 - Area - Light Blue Wave")
+plot(ShowWaveTrend and WTShadeArea?                                       wt2     : na,  color=W2Color,                  style=4,             title="Wave Trend - WT 2 - Area - Blue Wave")
+
+// plot(ShowWaveTrend and ShowWaveTrendDelta?  wt1-wt2 : na,  color=WTDeltaColor, linewidth=2, style=WTDeltaStyle, title="Wave Trend - Delta - (Yellow Wave = Wave1 - Wave2)")
+
+plot(ShowWaveTrend and ShowWaveTrendDelta and not ShowWTDeltOutlineOnly ? wt1-wt2 : na,  color=WTDeltaAreaColor,         linewidth=1, style=4, title="Wave Trend - Delta - (Yellow Wave = Wave1 - Wave2) - Area")
+plot(ShowWaveTrend and ShowWaveTrendDelta and     ShowWTDeltOutlineOnly ? wt1-wt2 : na,  color=WTDeltaThickOutlineColor, linewidth=3, style=2, title="Wave Trend - Delta - (Yellow Wave = Wave1 - Wave2) - Outline")
+
+
+// Wave Trend - Signals - green dots and crosses
+
+plotshape(ShowWaveTrend and crossover( wt1, wt2) ?                        wt2     : na, title="Wave Trend - Pos Cross",                      location=location.absolute, style=shape.circle, size=size.tiny, color=#3FFF00, transp=20)
+plotshape(ShowWaveTrend and crossunder(wt1, wt2) ?                        wt2     : na, title="Wave Trend - Neg Cross",                      location=location.absolute, style=shape.circle, size=size.tiny, color=red,     transp=30)
+
+plot(ShowWaveTrend and WTShowOBOSDuplication and (crossover( wt1, wt2) and (wt2 > WTOB)) ?        40 : na, title="Wave Trend - Pos Cross In Overbought Region - Dots @ 40",       color=color(#3FFF00, 30), style=circles, linewidth=3)
+plot(ShowWaveTrend and WTShowOBOSDuplication and (crossunder(wt1, wt2) and (wt2 > WTOB)) ?        40 : na, title="Wave Trend - Neg Cross In Overbought Region - Dots @ 40",       color=color(red,     35), style=circles, linewidth=5)
+
+plot(ShowWaveTrend and WTShowOBOSDuplication and (crossover( wt1, wt2) and (wt2 < WTOS)) ? WTOS + 7  : na, title="Wave Trend - Pos Cross In Oversold Region - Dots @ WT OS + 7",  color=color(#3FFF00, 35), style=circles, linewidth=5)
+plot(ShowWaveTrend and WTShowOBOSDuplication and (crossunder(wt1, wt2) and (wt2 < WTOS)) ? WTOS + 7  : na, title="Wave Trend - Neg Cross In Oversold Region - Dots @ WT OS + 7",  color=color(red,     30), style=circles, linewidth=3)
+
+
+// Wave Trend - Signals - WT1 Zero Line Crosses
+
+plot(WTShowZeroCrossing and WT1PosZeroCross ?                             -35     : na, "Wave Trend - Crosses Over Zero Line",                  color = green, transp=30, style=cross, linewidth=2)
+plot(WTShowZeroCrossing and WT1NegZeroCross ?                             -35     : na, "Wave Trend - Crosses Under Zero Line",                 color = red,   transp=30, style=cross, linewidth=2)
+
+// plot(WT1PosZeroCross and PosConfluence?                                  -35      : na, "Wave Trend - Crosses Over Zero Line With Confluence",  color = lime, transp=78,  style=circles, linewidth=6)
+// plot(WT1NegZeroCross and NegConfluence?                                  -35      : na, "Wave Trend - Crosses Under Zero Line With Confluence", color = red,  transp=70,  style=circles, linewidth=6)
+
+WTFilteredPositive = TrendFilterPlus  and crossover(  wt1, wt2)
+WTFilteredNegative = TrendFilterMinus and crossunder( wt1, wt2)
+
+// top=112
+// plotshape(WTSetups and WTFilteredPositive ?                                  top      : na, "Wave Trend - Trend Filtered Positive Wave Trend Setups - Dots @ 112", location=location.absolute, style=shape.circle, size=size.tiny, color=#288a75, style=circles)
+// plotshape(WTSetups and WTFilteredNegative ?                                  top      : na, "Wave Trend - Trend Filtered Negative Wave Trend Setups - Dots @ 112", location=location.absolute, style=shape.circle, size=size.tiny, color=red,     style=circles)
+
+
+plot(WTSetups and WTFilteredPositive ?                                  106      : na, "Wave Trend - Trend Filtered Positive Wave Trend Setups - Dots @ 106", color=#288a75, style=circles, linewidth=2)
+plot(WTSetups and WTFilteredNegative ?                                  106      : na, "Wave Trend - Trend Filtered Negative Wave Trend Setups - Dots @ 106", color=red,     style=circles, linewidth=2)
+
+// Wave Trend Alerts
+
+alertcondition(WTFilteredPositive,                               title='Alert- Wave Trend - Trend Filtered Pos X ',  message='Wave Trend - Trend Filtered Positive Cross - MarketVision B')
+alertcondition(WTFilteredNegative,                               title='Alert- Wave Trend - Trend Filtered Neg X ',  message='Wave Trend - Trend Filtered Negative Cross - MarketVision B')
+alertcondition(WTFilteredPositive or WTFilteredNegative,         title='Alert- Wave Trend - Trend Filtered X ',      message='Wave Trend - Trend Filtered Cross - MarketVision B')
+
+alertcondition(WT1PosZeroCross,                                  title='Alert- Wave Trend - Xs Over 0 Line',         message='Wave Trend - Xs Over 0 Line - MarketVision B')
+alertcondition(WT1NegZeroCross,                                  title='Alert- Wave Trend - Xs Under 0 Line',        message='Wave Trend - Xs Under 0 Line - MarketVision B')
+alertcondition(WT1PosZeroCross or WT1NegZeroCross,               title='Alert- Wave Trend - Xs 0 Line',              message='Wave Trend - Xs 0 Line - MarketVision B')
+
+alertcondition(crossover( wt1, wt2) ,                            title='Alert- Wave Trend - Pos X',                  message='Wave Trend - Positive X - MarketVision B')
+alertcondition(crossunder(wt1, wt2) ,                            title='Alert- Wave Trend - Neg X',                  message='Wave Trend - Negative X - MarketVision B')
+
+alertcondition(crossover( wt1, wt2) and (wt2 < WTOS) ,           title='Alert- Wave Trend - OS Pos X',               message='Wave Trend - Over Sold Positive X - MarketVision B')
+alertcondition(crossunder(wt1, wt2) and (wt2 > WTOB) ,           title='Alert- Wave Trend - OB Neg X',               message='Wave Trend - Over Bought Negative X - MarketVision B')
+
+alertcondition(crossover( wt1, wt2) and (wt2 < WTVOS) ,          title='Alert- Wave Trend - VOS Pos X',              message='Wave Trend - Very Over Sold Positive X - MarketVision B')
+alertcondition(crossunder(wt1, wt2) and (wt2 > WTVOB) ,          title='Alert- Wave Trend - VOB Neg X',              message='Wave Trend - Very Over Bought Negative X - MarketVision B')
+
+alertcondition((crossover( wt1, wt2) and (wt2 > -20) and (wt2 < 1))  or (crossunder(wt1, wt2) and (wt2 < 20) and (wt2 > 1)),    title='Alert- Wave Trend PosX > -20 / NegX < 20',   message='Wave Trend Pos X > -20 or Neg X < 20 - MarketVision B')
+alertcondition((crossover( wt1, wt2) and (wt2 > -30) and (wt2 < 1))  or (crossunder(wt1, wt2) and (wt2 < 30) and (wt2 > 1)),    title='Alert- Wave Trend PosX > -30 / NegX < 30',   message='Wave Trend Pos X > -30 or Neg X < 30 - MarketVision B')
+
+alertcondition((crossover( wt1, wt2) and (wt2 < WTOS))  or (crossunder(wt1, wt2) and (wt2 > WTOB)),                             title='Alert- Wave Trend OS Pos X / OB Neg X',      message='Wave Trend OS Pos X or OB Neg X - MarketVision B')
+alertcondition((crossover( wt1, wt2) and (wt2 < WTVOS)) or (crossunder(wt1, wt2) and (wt2 > WTVOB)),                            title='Alert- Wave Trend VOS Pos X / VOB Neg X',    message='Wave Trend VOS Pos X or VOB Neg X - MarketVision B')
+
+
+// Wave Trend
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Money Flow
+
+ShowMoneyFlow     = input(true, "Money Flow -----------")
+
+MoneyFlowFill     = input(true, "Money Flow - Fill Area")
+
+MoneyFlowTranspIn = input(20,  "MoneyFlow - Brightness",  minval = 0, maxval = 100, step = 5)
+MoneyFlowTransp   = 100 - MoneyFlowTranspIn
+
+
+// /////////////////////////////////////////////////////////////////
+
+
+ma(matype, src, length) =>
+    if matype == "RMA"
+        rma(src, length)
+    else
+        if matype == "SMA"
+            sma(src, length)
+        else
+            if matype == "EMA"
+                ema(src, length)
+            else
+                if matype == "WMA"
+                    wma(src, length)
+                else
+                    if matype == "VWMA"
+                        vwma(src, length)
+                    else
+                        if matype == "RSI"
+                            rsi(src, length)
+                        else
+                            if matype == "RSI Signal Line Cross - Set Value - RSI 13, Sig 21"
+                                rsi(src, 13)
+                            else
+                                if matype == "Yellow Wave (Wave Trend - Wave1-Wave2)"
+                                    YellowWave
+                                else
+                                    if matype == "MFI"
+                                        mfi(src, length)
+                                    else    
+                                        if matype == "Ultimate Oscillator - Set Value - 7, 14, 28" 
+                                            UltOscOut    
+                                        else    
+                                            if matype == "HullMA"
+                                                wma(2 * wma(src, length / 2) - wma(src, length), round(sqrt(length)))
+                                            else
+                                                src
+
+
+
+MoneyFlowMA         = input(defval="SMA",  title="Money Flow - Type", options=["Chaikin Money Flow", "MFI", "RSI", "EMA", "HullMA", "SMA", "RMA", "WMA", "VWMA"])
+
+
+MoneyFlowMAPeriod   = input(60,                  "Money Flow - MA - Length")
+MoneyFlowMultiplier = input(200,                 "Money Flow - MA - Area Multiplier for MA's", minval=0, maxval=500, step=10)
+MoneyFlowYPosition  = input(2.25,                "Money Flow - MA - Area Y Position MA's - 0 = Recommended, 2.25 = MarketCipher B, 2.5 = VMC Cipher B",     minval=0, maxval=10, step=0.25)
+MoneyFlowMFPeriod   = input(13,                  "Money Flow - Chaikin / MFI / RSI Length")
+MoneyFlowSmoothing  = input(1,                   "Money Flow - Smoothing", minval=1, maxval=8, step=1)
+
+CandleValue         = MoneyFlowMA=="MFI" or MoneyFlowMA=="RSI" ? close : MoneyFlowMA=="Chaikin Money Flow" and (close==high and close==low or high==low) ? 0 : MoneyFlowMA=="Chaikin Money Flow" and not (close==high and close==low or high==low) ? ((2*close-low-high)/(high-low))*volume : (close - open) / (high - low)
+
+MoneyFlow           = MoneyFlowMA=="MFI" ? (sma(ma(MoneyFlowMA, CandleValue, MoneyFlowMFPeriod), (MoneyFlowSmoothing)))  - 50 : MoneyFlowMA=="RSI" ? (sma(ma(MoneyFlowMA, CandleValue, MoneyFlowMFPeriod), (MoneyFlowSmoothing)))  - 50 : MoneyFlowMA=="Chaikin Money Flow" ?  sma(sum(CandleValue, MoneyFlowMFPeriod) / (sum(volume, MoneyFlowMFPeriod)), (MoneyFlowSmoothing)) :  (sma(ma(MoneyFlowMA, (CandleValue * (MoneyFlowMultiplier + 1)), MoneyFlowMAPeriod), (MoneyFlowSmoothing)) - MoneyFlowYPosition) 
+
+MoneyFlowOut        = MoneyFlowMA=="MFI" or MoneyFlowMA=="RSI" ? MoneyFlow  : MoneyFlowMA=="Chaikin Money Flow" ? MoneyFlow * 100 : MoneyFlow 
+
+MFcolor_outline     = MoneyFlow > 0 ? color(lime, 32)  : red
+MFcolor_area        = MoneyFlow > 0 ?            green : red 
+MoneyFlowValue      = MoneyFlow > 0 ?                1 : 0
+
+plot(ShowMoneyFlow?                   MoneyFlowOut : na,  color=MFcolor_outline,          transp=35,              title="Money Flow Red/Green Wave - Outline")
+plot(ShowMoneyFlow and MoneyFlowFill? MoneyFlowOut : na,  color=MFcolor_area,    style=4, transp=MoneyFlowTransp, title="Money Flow Red/Green Wave - Area")
+
+// Alerts & Conditions - Money Flow
+
+MoneyFlowGreenChange =     MoneyFlowValue and not MoneyFlowValue[1]
+MoneyFlowRedChange   = not MoneyFlowValue and     MoneyFlowValue[1]
+
+alertcondition(MoneyFlowGreenChange,                           title='Alert-Color Change - Money Flow Green', message='Green - Color Change - Money Flow - MarketVision B')
+alertcondition(MoneyFlowRedChange,                             title='Alert-Color Change - Money Flow Red',   message='Red - Color Change - Money Flow - MarketVision B')
+alertcondition(MoneyFlowGreenChange or MoneyFlowRedChange,     title='Alert-Color Change - Money Flow',       message='Color Change - Money Flow - MarketVision B')
+
+// Money Flow
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+ShowTMSetupsIn      = input(true, "----- Show - Trend Meter Setups - Alignment of Selected Trend Meters -----")
+
+TMSetupsTypeIn      = input(defval="Type 4 - Osc1 TM and (TM1 or TM2) and TM3",  title="------------------- Trend Meter Setups - Select Trend Meters", options=["Type 1 - TM1 and TM2 and TM3", "Type 2 - Osc1 TM and TM1 and TM2 and TM3", "Type 3 - (Osc1 TM or TM1) and TM2 and TM3", "Type 4 - Osc1 TM and (TM1 or TM2) and TM3", "Type 5 - Osc1 TM and TM1 and (TM2 or TM3)"])
+
+
+// TMSetupsTypeIn
+
+// "Type 1 - TM1 and TM2 and TM3" 
+
+// "Type 2 - Osc1 TM and TM1 and TM2 and TM3" 
+
+// "Type 3 - (Osc1 TM or TM1) and TM2 and TM3" 
+
+// "Type 4 - Osc1 TM and (TM1 or TM2) and TM3"
+
+// "Type 5 - Osc1 TM and TM1 and (TM2 or TM3)"
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Trend Meter 1
+
+// Linear Regression Calculation For RSI 
+
+x       = n
+y       = (rsi(Oscillator1Source, 13))
+x_      = sma(x,21) 
+y_      = sma(y,21)
+mx      = stdev(x,21)
+my      = stdev(y,21)
+c       = correlation(x,y,21)
+slope   = c * (my/mx)
+inter   = y_ - slope*x_
+LinReg1 = x*slope + inter
+
+RSI13Above50           = (rsi(close, 13) > 50) ?                  1 : 0
+RSISigCross            = (rsi(Oscillator1Source, 13) > LinReg1) ? 1 : 0
+RSISignalLineDirection = LinReg1 > LinReg1[1] ?                   1 : 0
+RSISignalLineColor     = LinReg1 > LinReg1[1] ?  color(#3CB371, 20) : color(#FF1DCE, 24) 
+
+// Fast MACD Calculations
+
+FastMACDfastMA             = 8
+FastMACDslowMA             = 21
+FastMACDsignalSmooth       = 5
+
+FastMACDLine               = ema(close, FastMACDfastMA) - ema(close, FastMACDslowMA)
+FastSignalLine             = ema(FastMACDLine, FastMACDsignalSmooth)
+FastMACDHistogram          = FastMACDLine - FastSignalLine
+FastMACDHistogramCross     = FastMACDHistogram > 0 ? 1 : 0
+
+FastMACDColorA              = FastMACDHistogramCross?                color(#288a75, 53) : red
+RSISignalLineCrossColorA    = rsi(Oscillator1Source, 13) > LinReg1 ? color(#288a75, 53) : red
+RSISignalLineDirectionColorA= RSISignalLineDirection ?               color(#288a75, 53) : red
+Oscillator1PosNegColorA     = Oscillator1 > 50 ?                     color(#288a75, 53) : red
+
+FastMACDColorB              = FastMACDHistogramCross?                #288a75 : red
+RSISignalLineCrossColorB    = rsi(Oscillator1Source, 13) > LinReg1 ? #288a75 : red
+RSISignalLineDirectionColorB= RSISignalLineDirection ?               #288a75 : red
+Oscillator1PosNegColorB     = Oscillator1 > 50 ?                     #288a75 : red
+Oscillator1Above50          = Oscillator1 > 50 ?                           1 : 0
+
+
+// Oscillator 1 Trend Bar Meter 
+
+ShowOsc1TrendMeterColor     = ShowOsc1TrendMeterColorIn == "Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1PosNegColorA : ShowOsc1TrendMeterColorIn == "MACD Crossover - Fast - 8, 21, 5" ? FastMACDColorA         : RSISignalLineCrossColorA
+
+Osc1TrendMeterValue         = ShowOsc1TrendMeterColorIn == "Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1Above50      : ShowOsc1TrendMeterColorIn == "MACD Crossover - Fast - 8, 21, 5" ? FastMACDHistogramCross : RSISigCross
+
+plot(ShowOsc1TrendMeter ?   50 : na, "Oscillator 1 Trend Meter - Line @ +50 (Oscillator 2 Mid Line)", color=ShowOsc1TrendMeterColor, style=line, linewidth=3, transp=48)
+
+
+// Trend Meter 1
+
+ShowTrendMeter1     = input(true,                "Trend Meter 1 ----------- @ Wave Trend Over Sold")
+
+TrendMeterTypyIn    = "Line"     // input(defval= "Dots", title="Trend Meters 1, 2 & 3 - Display As", options=["Dots", "Line"])
+
+TrendMeterTypeDots  = TrendMeterTypyIn == "Dots" ?  1 : 0
+
+TMSpacingIN         = input(3.5,     "Trend Meters 1, 2 & 3 - Spacing", minval=2, maxval=8, step=0.5)
+
+
+TM1InitialPos       = WTOS
+TM2InitialPos       = WTOS - TMSpacingIN
+TM3InitialPos       = WTOS - TMSpacingIN - TMSpacingIN
+TB1InitialPos       = WTOS - TMSpacingIN - TMSpacingIN - TMSpacingIN - 1
+
+// TM2Pos              = not ShowTrendMeter1? TM1InitialPos : TM2InitialPos
+// TM3Pos              = ShowTrendMeter1 and ShowTrendMeter2? TM3InitialPos : (ShowTrendMeter1 and not ShowTrendMeter2) or (ShowTrendMeter2 and not ShowTrendMeter1)? TM2InitialPos : TM1InitialPos
+// TB1Pos              = ShowTrendMeter1 and ShowTrendMeter2 and ShowTrendMeter3? TB1InitialPos : (ShowTrendMeter1 and ShowTrendMeter2 and not ShowTrendMeter3) or (ShowTrendMeter1 and ShowTrendMeter3 and not ShowTrendMeter2) or (ShowTrendMeter3 and ShowTrendMeter2 and not ShowTrendMeter1) ? TM3InitialPos - 0.5 :  (ShowTrendMeter1 and not ShowTrendMeter2 and not ShowTrendMeter3) or (ShowTrendMeter2 and not ShowTrendMeter1 and not ShowTrendMeter3) or (ShowTrendMeter3 and not ShowTrendMeter2 and not ShowTrendMeter1) ? TM2InitialPos - 0.5 : TM1InitialPos 
+
+TrendMeter1ColorIn  = input(defval= "RSI Signal Line Cross - Set Value - RSI 13, Signal Line (Linear Regression) 21", title="Trend Meter 1", options=["MACD Crossover - Fast - 8, 21, 5", "Oscillator 1 Above or Below Mid / 50 Line", "RSI Signal Line Cross - Set Value - RSI 13, Signal Line (Linear Regression) 21"])
+
+TrendMeter1Color    = TrendMeter1ColorIn == "Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1PosNegColorB : TrendMeter1ColorIn == "MACD Crossover - Fast - 8, 21, 5" ? FastMACDColorB          : RSISignalLineCrossColorB
+
+TrendMeter1Value    = TrendMeter1ColorIn == "Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1Above50      : TrendMeter1ColorIn == "MACD Crossover - Fast - 8, 21, 5" ? FastMACDHistogramCross : RSISigCross
+
+
+// Oscillator 1 Color Calculation and Plot
+
+Osc1ColorUltOsc     = Oscillator1 > Oscillator1OB - 1 ? color(purple, 31) : Oscillator1 < Oscillator1OS + 1 ? color(purple, 31) : color(#966FD6, 30)  // ShowWaveTrend and (wt2 >= Oscillator1) ? color(white, 50) : #966FD699
+
+Osc1ColorRSIMFI     = Oscillator1 > Oscillator1OB ?     color(purple, 31) : Oscillator1 < Oscillator1OS ?     color(purple, 31) : color(#966FD6, 30)  // ShowWaveTrend and (wt2 >= Oscillator1) ? color(white, 50) : #966FD699
+
+Oscillator1Color    = Oscillator1In == "Ultimate Oscillator - Set Value - 7, 14, 28" ? Osc1ColorUltOsc : Osc1ColorRSIMFI
+
+
+plot(ShowOscillator1? Oscillator1 : na, color=Oscillator1Color,  linewidth=3, title="Oscillator 1")
+plot(ShowOscillator1 and Oscillator1In == "RSI.Signal Line - Set Value - RSI 13, Signal Line (Linear Regression) 21" ? LinReg1 : na, color=RSISignalLineColor, linewidth=2, title="Oscillator 1 - RSI Linear Regression Signal Line")
+
+// Trend Meter 1 Plot 
+
+// plot(ShowTrendMeter1 and     TrendMeterTypeDots ? WTOS : na, "Trend Meter 1 - Dots @ Wave Trend Over Sold",        color=TrendMeter1Color, style=circles, linewidth=2)
+plot(ShowTrendMeter1 and not TrendMeterTypeDots ? WTOS : na, "Trend Meter 1 - Line @ Wave Trend Over Sold",        color=TrendMeter1Color, style=line,    linewidth=2)
+
+
+// Alerts & Conditions - Osc1 Trend Bar
+
+Osc1TrendMeterGreenChange =     Osc1TrendMeterValue and not Osc1TrendMeterValue[1]
+Osc1TrendMeterRedChange   = not Osc1TrendMeterValue and     Osc1TrendMeterValue[1]
+
+alertcondition(Osc1TrendMeterGreenChange,                                title='Alert - Trend Meter Osc1 Change to Green',             message='Green - Color Change - Osc1 Trend Meter - MarketVision B')
+alertcondition(Osc1TrendMeterRedChange,                                  title='Alert - Trend Meter Osc1 Change to Red',               message='Red - Color Change - Osc1 Trend Meter - MarketVision B')
+alertcondition(Osc1TrendMeterRedChange or Osc1TrendMeterGreenChange,     title='Alert - Trend Meter Osc1 Change Color',                message='Color Change - Osc1 Trend Meter - MarketVision B')
+
+// Alerts & Conditions - Trend Meter 1
+
+TrendMeter1GreenChange =     TrendMeter1Value and not TrendMeter1Value[1]
+TrendMeter1RedChange   = not TrendMeter1Value and     TrendMeter1Value[1]
+
+alertcondition(TrendMeter1GreenChange,                                title='Alert - Trend Meter 1 Change to Green',               message='Green - Color Change - Trend Meter 1 - MarketVision B')
+alertcondition(TrendMeter1RedChange,                                  title='Alert - Trend Meter 1 Change to Red',                 message='Red - Color Change - Trend Meter 1 - MarketVision B')
+alertcondition(TrendMeter1RedChange or TrendMeter1GreenChange,        title='Alert - Trend Meter 1 Change Color',                  message='Color Change - Trend Meter 1 - MarketVision B')
+
+// Trend Meter 1
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Trend Meter 2
+
+ShowTrendMeter2        = input(true,              "Trend Meter 2 -----------")
+
+TM2Pos                 = not ShowTrendMeter1? TM1InitialPos : TM2InitialPos
+
+TrendMeter2Period      = input(5,                 "Trend Meter 2 - Period")
+
+TrendMeter2MA          = input(defval="MACD Crossover - Fast - 8, 21, 5", title="Trend Meter 2 - MA",         options=["MACD Crossover - Fast - 8, 21, 5", "Oscillator 1 Above or Below Mid / 50 Line", "RSI Signal Line Cross - Set Value - RSI 13, Sig 21", "RSI"])
+
+//  TrendMeter2Position    = WTOS - 5      // TrendMeter2PositionIn=="Top" ? 105 : TrendMeter2PositionIn=="-50" ? -50 : TrendMeter2PositionIn=="-75" ? -75 : TrendMeter2PositionIn=="OS" ? WTosLevel2 : TrendMeter2PositionIn=="VOS" ? WTosLevel1 : -105
+
+TrendMeter2CandleValue = TrendMeter2MA=="RSI" or TrendMeter2MA=="RSI Signal Line Cross - Set Value - RSI 13, Sig 21" ? close : TrendMeter2MA=="MACD Crossover - Fast - 8, 21, 5" ? FastMACDHistogramCross : TrendMeter2MA=="Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1Above50 : (close - open) / (high - low)
+
+TrendMeter2            = ma(TrendMeter2MA, TrendMeter2CandleValue, TrendMeter2Period) 
+
+TrendMeter2MidValue    = (TrendMeter2MA=="RSI") or (TrendMeter2MA=="MFI") or (TrendMeter2MA=="Ultimate Oscillator - Set Value - 7, 14, 28") ? 50 : TrendMeter2MA=="RSI Signal Line Cross - Set Value - RSI 13, Sig 21" ? LinReg : 0
+
+TrendMeter2Color       = TrendMeter2 > TrendMeter2MidValue ? #288a75 : red
+
+TrendMeter2Value       = TrendMeter2 > TrendMeter2MidValue ? 1 : 0
+
+
+// plot(ShowTrendMeter2 and     TrendMeterTypeDots? TM2Pos : na, "Trend Meter 2 - Dots",  color=TrendMeter2Color, style=circles, linewidth=2)
+plot(ShowTrendMeter2 and not TrendMeterTypeDots? TM2Pos : na, "Trend Meter 2 - Line",  color=TrendMeter2Color, style=line,    linewidth=2)
+
+
+// Alerts & Conditions - Trend Meter 2
+
+TrendMeter2GreenChange =     TrendMeter2Value and not TrendMeter2Value[1]
+TrendMeter2RedChange   = not TrendMeter2Value and     TrendMeter2Value[1]
+
+alertcondition(TrendMeter2GreenChange,                           title='Alert - Trend Meter 2 Change to Green',                    message='Green - Color Change - Trend Meter 2 - MarketVision B')
+alertcondition(TrendMeter2RedChange,                             title='Alert - Trend Meter 2 Change to Red',                      message='Red - Color Change - Trend Meter 2 - MarketVision B')
+alertcondition(TrendMeter2GreenChange or TrendMeter2RedChange,   title='Alert - Trend Meter 2 Change Color',                       message='Color Change - Trend Meter 2 - MarketVision B')
+
+// Trend Meter 2
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Trend Meter 3
+
+ShowTrendMeter3        = input(false,               "Trend Meter 3 -----------")
+
+TM3Pos                 = ShowTrendMeter1 and ShowTrendMeter2? TM3InitialPos : (ShowTrendMeter1 and not ShowTrendMeter2) or (ShowTrendMeter2 and not ShowTrendMeter1)? TM2InitialPos : TM1InitialPos
+
+TrendMeter3Period      = input(5,                  "Trend Meter 3 - Period")
+
+TrendMeter3MA          = input(defval="RSI", title="Trend Meter 3 - MA",         options=["MACD Crossover - Fast - 8, 21, 5", "Oscillator 1 Above or Below Mid / 50 Line", "RSI Signal Line Cross - Set Value - RSI 13, Sig 21", "RSI"])
+
+// TrendMeter3Position    = WTOS - 10       // MoneyFlowBarAPositionIn=="Top" ? 105 : MoneyFlowBarAPositionIn=="-50" ? -50 : MoneyFlowBarAPositionIn=="-75" ? -75 : MoneyFlowBarAPositionIn=="OS" ? WTosLevel2 : MoneyFlowBarAPositionIn=="VOS" ? WTosLevel1 : -105
+
+TrendMeter3CandleValue = TrendMeter3MA=="RSI" or TrendMeter3MA=="RSI Signal Line Cross - Set Value - RSI 13, Sig 21" ? close : TrendMeter3MA=="MACD Crossover - Fast - 8, 21, 5" ? FastMACDHistogramCross : TrendMeter3MA=="Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1Above50 :  (close - open) / (high - low)
+
+TrendMeter3            = ma(TrendMeter3MA, TrendMeter3CandleValue, TrendMeter3Period) 
+
+TrendMeter3MidValue    = (TrendMeter3MA=="RSI") or (TrendMeter3MA=="MFI") or (TrendMeter3MA=="Ultimate Oscillator - Set Value - 7, 14, 28") ? 50 : TrendMeter3MA=="RSI Signal Line Cross - Set Value - RSI 13, Sig 21" ? LinReg : 0
+
+TrendMeter3Color       = TrendMeter3 > TrendMeter3MidValue ? #288a75 : red
+
+TrendMeter3Value       = TrendMeter3 > TrendMeter3MidValue ? 1 : 0
+
+// plot(ShowTrendMeter3 and     TrendMeterTypeDots? TM3Pos : na, "Trend Meter 3 - Dots",  color=TrendMeter3Color, style=circles, linewidth=2)
+plot(ShowTrendMeter3 and not TrendMeterTypeDots? TM3Pos : na, "Trend Meter 3 - Line",  color=TrendMeter3Color, style=line,    linewidth=2)
+
+
+// Alerts & Conditions - Trend Meter 3
+
+TrendMeter3GreenChange =     TrendMeter3Value and not TrendMeter3Value[1]
+TrendMeter3RedChange   = not TrendMeter3Value and     TrendMeter3Value[1]
+
+alertcondition(TrendMeter3GreenChange,                           title='Alert - Trend Meter 3 Change to Green',                    message='Green - Color Change - Trend Meter 3 - MarketVision B')
+alertcondition(TrendMeter3RedChange,                             title='Alert - Trend Meter 3 Change to Red',                      message='Red - Color Change - Trend Meter 3 - MarketVision B')
+alertcondition(TrendMeter3GreenChange or TrendMeter3RedChange,   title='Alert - Trend Meter 3 Change Color',                       message='Color Change - Trend Meter 3 - MarketVision B')
+
+
+// Alerts & Conditions - Trend Meter Setups
+
+PosTMSetupsType1 =     TrendMeter1Value and      TrendMeter2Value and     TrendMeter3Value
+NegTMSetupsType1 = not TrendMeter1Value and  not TrendMeter2Value and not TrendMeter3Value
+
+PosTMSetupsType2 =     Osc1TrendMeterValue and     TrendMeter1Value and      TrendMeter2Value and     TrendMeter3Value
+NegTMSetupsType2 = not Osc1TrendMeterValue and not TrendMeter1Value and  not TrendMeter2Value and not TrendMeter3Value
+
+PosTMSetupsType3 =     (Osc1TrendMeterValue or     TrendMeter1Value) and      TrendMeter2Value and     TrendMeter3Value
+NegTMSetupsType3 = (not Osc1TrendMeterValue or not TrendMeter1Value) and  not TrendMeter2Value and not TrendMeter3Value
+
+PosTMSetupsType4 =     Osc1TrendMeterValue and     (TrendMeter1Value or      TrendMeter2Value) and     TrendMeter3Value
+NegTMSetupsType4 = not Osc1TrendMeterValue and (not TrendMeter1Value or  not TrendMeter2Value) and not TrendMeter3Value
+
+PosTMSetupsType5 =     Osc1TrendMeterValue and     TrendMeter1Value and      (TrendMeter2Value or     TrendMeter3Value)
+NegTMSetupsType5 = not Osc1TrendMeterValue and not TrendMeter1Value and  (not TrendMeter2Value or not TrendMeter3Value)
+
+
+PositiveTrendMeters = TMSetupsTypeIn=="Type 1 - TM1 and TM2 and TM3" ? PosTMSetupsType1 : TMSetupsTypeIn=="Type 2 - Osc1 TM and TM1 and TM2 and TM3" ? PosTMSetupsType2 : TMSetupsTypeIn=="Type 3 - (Osc1 TM or TM1) and TM2 and TM3" ? PosTMSetupsType3 : TMSetupsTypeIn=="Type 4 - Osc1 TM and (TM1 or TM2) and TM3" ? PosTMSetupsType4 : PosTMSetupsType5
+NegativeTrendMeters = TMSetupsTypeIn=="Type 1 - TM1 and TM2 and TM3" ? NegTMSetupsType1 : TMSetupsTypeIn=="Type 2 - Osc1 TM and TM1 and TM2 and TM3" ? NegTMSetupsType2 : TMSetupsTypeIn=="Type 3 - (Osc1 TM or TM1) and TM2 and TM3" ? NegTMSetupsType3 : TMSetupsTypeIn=="Type 4 - Osc1 TM and (TM1 or TM2) and TM3" ? NegTMSetupsType4 : NegTMSetupsType5
+
+PositiveTrendMeterSetups = PositiveTrendMeters and not PositiveTrendMeters[1]
+NegativeTrendMeterSetups = NegativeTrendMeters and not NegativeTrendMeters[1]
+
+
+ShowTrendMeterSetups = ShowTMSetupsIn and (ShowTrendMeter1 or ShowTrendMeter2 or ShowTrendMeter3) 
+
+plot(ShowTrendMeterSetups and PositiveTrendMeterSetups ? WTOS + 2 : na, "Trend Meter Setups - Selected Trend Meters Now Align Green", color=color(#288a75, 48), style=histogram, histbase = TM3Pos - 1.5,  linewidth=2)
+plot(ShowTrendMeterSetups and NegativeTrendMeterSetups ? WTOS + 2 : na, "Trend Meter Setups - Selected Trend Meters Now Align Red",   color=color(red,     48), style=histogram, histbase = TM3Pos - 1.5,  linewidth=2)
+
+
+alertcondition(PositiveTrendMeterSetups,                 title='Alert - Trend Meter Setups Green',                   message='Green - Trend Meter Setups Green - MarketVision B')
+alertcondition(NegativeTrendMeterSetups,                 title='Alert - Trend Meter Setups Red',                     message='Red - Trend Meter Setups Red - MarketVision B')
+alertcondition(PositiveTrendMeterSetups or NegativeTrendMeterSetups, title='Alert - Trend Meter Setups Same Color',  message='Trend Meter Setups Same Color - MarketVision B')
+
+MaxValueMACrossUp   = crossover( ema(close, 5), ema(close, 11)) 
+MaxValueMACrossDown = crossunder(ema(close, 5), ema(close, 11))
+
+alertcondition(WTFilteredPositive or PositiveTrendMeterSetups or MaxValueMACrossUp ,  title='Alert - Any Positive Setup',   message='Any Positive Setup - Trend Meters Setup or Filtered Wave Trend or 5 / 11 EMA Cross - MarketVision B')
+alertcondition(WTFilteredNegative or NegativeTrendMeterSetups or MaxValueMACrossDown, title='Alert - Any Negative Setup',   message='Any Negative Setup - Trend Meters Setup or Filtered Wave Trend or 5 / 11 EMA Cross - MarketVision B')
+alertcondition(WTFilteredNegative or WTFilteredPositive or PositiveTrendMeterSetups or NegativeTrendMeterSetups or MaxValueMACrossUp or MaxValueMACrossDown,   title='Alert - Any Setup',   message='Any Setup - Trend Meters Setup or Filtered Wave Trend or 5 / 11 EMA Cross - MarketVision B')
+
+
+// Trend Meter 3
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// MA Trend Bar 1
+
+ShowMATrendBar1         = input(true,         "MA Trend Bar 1 ----------")
+
+TB1Pos                  = ShowTrendMeter1 and ShowTrendMeter2 and ShowTrendMeter3? TB1InitialPos : (ShowTrendMeter1 and ShowTrendMeter2 and not ShowTrendMeter3) or (ShowTrendMeter1 and ShowTrendMeter3 and not ShowTrendMeter2) or (ShowTrendMeter3 and ShowTrendMeter2 and not ShowTrendMeter1) ? TM3InitialPos - 1 :  (ShowTrendMeter1 and not ShowTrendMeter2 and not ShowTrendMeter3) or (ShowTrendMeter2 and not ShowTrendMeter1 and not ShowTrendMeter3) or (ShowTrendMeter3 and not ShowTrendMeter2 and not ShowTrendMeter1) ? TM2InitialPos - 1 : TM1InitialPos 
+
+MATrendBar1In           = input(      title = "MA Trend Bar 1",                 defval = "Money Flow",   options = ["MA Crossover", "MA Direction - Fast MA - MA TB1", "MA Direction - Slow MA - MA TB1", "MACD Crossover - Fast - 8, 21, 5", "Money Flow", "Oscillator 1 Above or Below Mid / 50 Line", "RSI 13 Above or Below Mid / 50 Line", "RSI Signal Line Cross - Set Value - RSI 13, Signal Line (Linear Regression) 21" ])  
+
+// MA Inputs
+
+MATrendBar1MA1_Type     = input(      title = 'MA Trend Bar 1 - Fast MA - Type',   defval="EMA",              options=["EMA","SMA"])
+MATrendBar1MA1_Length   = input( 5,   title = 'MA Trend Bar 1 - Fast MA - Length', minval=1)
+
+MATrendBar1MA2_Type     = input(      title = 'MA Trend Bar 1 - Slow MA - Type',   defval="EMA",              options=["EMA","SMA"])
+MATrendBar1MA2_Length   = input(11,   title = 'MA Trend Bar 1 - Slow MA - Length', minval=1)
+
+// MA Calculations
+
+MATrendBar1MA1=   if MATrendBar1MA1_Type=="SMA"
+    sma(close,MATrendBar1MA1_Length)
+else
+    ema(close,MATrendBar1MA1_Length)
+
+MATrendBar1MA2=   if MATrendBar1MA2_Type=="SMA"
+    sma(close,MATrendBar1MA2_Length)
+else
+    ema(close,MATrendBar1MA2_Length)
+
+
+// MA Crossover and Direction Condition
+
+MATrendBar1MACrossover   = MATrendBar1MA1 > MATrendBar1MA2?     1 : 0
+MATrendBar1MA1Direction  = MATrendBar1MA1 > MATrendBar1MA1[1] ? 1 : 0
+MATrendBar1MA2Direction  = MATrendBar1MA2 > MATrendBar1MA2[1] ? 1 : 0
+
+MATrendBar1CrossoverType = MATrendBar1In=="MA Direction - Fast MA - MA TB1" ? MATrendBar1MA1Direction : MATrendBar1In=="MA Direction - Slow MA - MA TB1" ? MATrendBar1MA2Direction : MATrendBar1In=="Money Flow" ? MoneyFlowValue : MATrendBar1In=="MACD Crossover - Fast - 8, 21, 5" ? FastMACDHistogramCross : MATrendBar1In=="Oscillator 1 Above or Below Mid / 50 Line" ? Oscillator1Above50 : MATrendBar1In=="RSI 13 Above or Below Mid / 50 Line" ? RSI13Above50 : MATrendBar1In=="RSI Signal Line Cross - Set Value - RSI 13, Signal Line (Linear Regression) 21" ? RSISigCross : MATrendBar1MACrossover 
+MATrendBar1Color         = MATrendBar1CrossoverType ? color(#288a75, 40) :  color(red, 35) 
+
+plot(ShowMATrendBar1 ? TB1Pos : na, title="6 - MA Trend Bar 1", style = line, color = MATrendBar1Color, linewidth = 5)
+
+// MA Trend Bar 1
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Alerts & Conditions - MA Crossing
+
+TB1MACrossUp   = crossover( MATrendBar1MA1, MATrendBar1MA2) 
+TB1MACrossDown = crossunder(MATrendBar1MA1, MATrendBar1MA2)
+
+alertcondition(TB1MACrossUp,                                                    title='Alert-MA TB1 Change to Green',                      message='MA Trend Bar 1 - Change to Green - MarketVision B')
+alertcondition(TB1MACrossDown,                                                  title='Alert-MA TB1 Change to Red',                        message='MA Trend Bar 1 - Change to Red - MarketVision B')
+alertcondition(TB1MACrossUp or TB1MACrossDown,                                  title='Alert-MA TB1 Change Color',                         message='MA Trend Bar 1 - Change Color - MarketVision B')
+
+
+// Alerts - MA Trend Bar 1 - MAs Direction Change
+
+alertcondition(MATrendBar1MA1Direction    and (not MATrendBar1MA1Direction[1]), title='Alert-MA TB1 Fast MA Now Pointing Up',              message='MA Trend Bar 1 - Fast MA Now Pointing Up - MarketVision B')
+alertcondition(MATrendBar1MA1Direction[1] and (not MATrendBar1MA1Direction),    title='Alert-MA TB1 Fast MA Now Pointing Down',            message='MA Trend Bar 1 - Fast MA Now Pointing Down - MarketVision B')
+alertcondition((MATrendBar1MA1Direction   and (not MATrendBar1MA1Direction[1])) or (MATrendBar1MA1Direction[1] and (not MATrendBar1MA1Direction)), title='Alert-MA TB1 Fast MA Changed Direction',  message='MA Trend Bar 1 - Fast MA Changed Direction - MarketVision B')
+
+alertcondition(MATrendBar1MA2Direction    and (not MATrendBar1MA2Direction[1]), title='Alert-MA TB1 Slow MA Now Pointing Up',              message='MA Trend Bar 1 - Slow MA Now Pointing Up - MarketVision B')
+alertcondition(MATrendBar1MA2Direction[1] and (not MATrendBar1MA2Direction),    title='Alert-MA TB1 Slow MA Now Pointing Down',            message='MA Trend Bar 1 - Slow MA Now Pointing Down - MarketVision B')
+alertcondition((MATrendBar1MA2Direction   and (not MATrendBar1MA2Direction[1])) or (MATrendBar1MA2Direction[1] and (not MATrendBar1MA2Direction)), title='Alert-MA TB1 Slow MA Changed Direction',  message='MA Trend Bar 1 - Slow MA Changed Direction - MarketVision B')
+
+
+// 5 ema Crosses 11 ema Alerts
+
+// MaxValueMACrossUp   = crossover( ema(close, 5), ema(close, 11)) 
+// MaxValueMACrossDown = crossunder(ema(close, 5), ema(close, 11))
+
+alertcondition(MaxValueMACrossUp,                        title='Alert - 5 ema Crosses Over 11 ema',  message='5 ema Crosses Over 11 ema - MarketVision B')
+alertcondition(MaxValueMACrossDown,                      title='Alert - 5 ema Crosses Under 11 ema', message='5 ema Crosses Under 11 ema - MarketVision B')
+alertcondition(MaxValueMACrossUp or MaxValueMACrossDown, title='Alert - 5 ema Crosses 11 ema',       message='5 ema Crosses 11 ema - Trend Meter')
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Divergences
+
+// Divergence Inputs
+
+Dinput1=Oscillator1                                                             // Oscillator 1 (RSI, MFI or Ultimate Oscillator)
+Dinput2=(StochShowIn=="K and D") or (StochShowIn=="K Only") ? StochK : StochD   // Stochastic K
+Dinput3=wt1                                                                     // Wave Trend Light Blue Wave  
+Dinput4=wt1-wt2                                                                 // Wave Trend Yellow Wave  
+
+
+Dinput1vertoffsetplus  = Dinput1 + DivVertOffsetOsc1
+Dinput1vertoffsetminus = Dinput1 - DivVertOffsetOsc1
+
+Dinput2vertoffsetplus  = Dinput2 + DivVertOffsetStoch
+Dinput2vertoffsetminus = Dinput2 - DivVertOffsetStoch
+
+Dinput3vertoffsetplus  = Dinput3 + DivVertOffsetWT
+Dinput3vertoffsetminus = Dinput3 - DivVertOffsetWT
+
+
+//------------------------------
+//@RicardoSantos' Divergence Script
+
+f_top_fractal(_src)=>_src[4] < _src[2] and _src[3] < _src[2] and _src[2] > _src[1] and _src[2] > _src[0]
+f_bot_fractal(_src)=>_src[4] > _src[2] and _src[3] > _src[2] and _src[2] < _src[1] and _src[2] < _src[0]
+f_fractalize(_src)=>f_top_fractal(_src) ? 1 : f_bot_fractal(_src) ? -1 : 0
+//-------------------------
+
+// 1st set of Divergences
+
+fractal_top1 = f_fractalize(Dinput1) > 0 ? Dinput1[2] : na
+fractal_bot1 = f_fractalize(Dinput1) < 0 ? Dinput1[2] : na
+
+high_prev1  = valuewhen(fractal_top1, Dinput1[2], 0)[2]
+high_price1 = valuewhen(fractal_top1, high[2], 0)[2]
+low_prev1   = valuewhen(fractal_bot1, Dinput1[2], 0)[2]
+low_price1  = valuewhen(fractal_bot1, low[2], 0)[2]
+
+
+regular_bearish_div1 = fractal_top1  and high[2] > high_price1 and Dinput1[2] < high_prev1
+hidden_bearish_div1  = fractal_top1  and high[2] < high_price1 and Dinput1[2] > high_prev1
+regular_bullish_div1 = fractal_bot1  and low[2]  < low_price1  and Dinput1[2] > low_prev1
+hidden_bullish_div1  = fractal_bot1  and low[2]  > low_price1  and Dinput1[2] < low_prev1
+//-------------------------
+
+col1 = ShowOscillator1 and showdivs1 and regular_bearish_div1 ? color(red, 30) : ShowOscillator1 and hidden_bearish_div1 and showhidden1 ? color(maroon, 30) : na
+col2 = ShowOscillator1 and showdivs1 and regular_bullish_div1 ? color(lime, 2) : ShowOscillator1 and hidden_bullish_div1 and showhidden1 ? color(green, 30)  : na
+
+plot(title='Oscillator 1  - Bearish Divergences', series=(showdivs1 or showhidden1) and fractal_top1 ? Dinput1vertoffsetplus[2]  : na, color=col1, linewidth=1, offset=DivOffset1)
+plot(title='Oscillator 1  - Bullish Divergences', series=(showdivs1 or showhidden1) and fractal_bot1 ? Dinput1vertoffsetminus[2] : na, color=col2, linewidth=1, offset=DivOffset1)
+
+
+// 2nd set of Divergences
+
+fractal_top2 = f_fractalize(Dinput2) > 0 ? Dinput2[2] : na
+fractal_bot2 = f_fractalize(Dinput2) < 0 ? Dinput2[2] : na
+
+high_prev2  = valuewhen(fractal_top2, Dinput2[2], 0)[2]
+high_price2 = valuewhen(fractal_top2, high[2], 0)[2]
+low_prev2   = valuewhen(fractal_bot2, Dinput2[2], 0)[2]
+low_price2  = valuewhen(fractal_bot2, low[2], 0)[2]
+
+
+regular_bearish_div2 = fractal_top2  and high[2] > high_price2 and Dinput2[2] < high_prev2
+hidden_bearish_div2  = fractal_top2  and high[2] < high_price2 and Dinput2[2] > high_prev2
+regular_bullish_div2 = fractal_bot2  and low[2]  < low_price2  and Dinput2[2] > low_prev2
+hidden_bullish_div2  = fractal_bot2  and low[2]  > low_price2  and Dinput2[2] < low_prev2
+//-------------------------
+
+
+col5 = ShowStochastic and showdivs2 and regular_bearish_div2 ? color(red, 30) : ShowStochastic and hidden_bearish_div2 and showhidden2 ? color(maroon, 30) : na
+col6 = ShowStochastic and showdivs2 and regular_bullish_div2 ? color(lime, 5) : ShowStochastic and hidden_bullish_div2 and showhidden2 ? color(green, 30)  : na
+
+plot(title='Stochastics -  Bearish Divergences', series=(showdivs2 or showhidden2) and fractal_top2 ? Dinput2vertoffsetplus[2]  : na, color=col5, linewidth=1, offset=DivOffset2)
+plot(title='Stochastics -  Bullish Divergences', series=(showdivs2 or showhidden2) and fractal_bot2 ? Dinput2vertoffsetminus[2] : na, color=col6, linewidth=1, offset=DivOffset2)
+
+
+// 3rd set of Divergences
+
+// // Dinput3 Divergences from Built In Divergence Script with Adjustable Lookback ////////////////////////////////////////////////////////////////
+
+// Dinput3lbR             = input(title="Pivot Lookback Right",  defval=5)
+// Dinput3lbL             = input(title="Pivot Lookback Left",   defval=5)
+// Dinput3rangeUpper      = input(title="Max of Lookback Range", defval=60)
+// Dinput3rangeLower      = input(title="Min of Lookback Range", defval=5)
+
+
+
+// Dinput3plFound = na(pivotlow( Dinput3, Dinput3lbL, Dinput3lbR)) ? false : true
+// Dinput3phFound = na(pivothigh(Dinput3, Dinput3lbL, Dinput3lbR)) ? false : true
+// _inRange(cond) =>
+// 	bars = barssince(cond == true)
+// 	Dinput3rangeLower <= bars and bars <= Dinput3rangeUpper
+
+// //------------------------------------------------------------------------------
+// // Regular Bullish
+// // Osc: Higher Low
+
+// Dinput3oscHL          = Dinput3[Dinput3lbR] > valuewhen(Dinput3plFound, Dinput3[Dinput3lbR], 1) and _inRange(Dinput3plFound[1])
+
+// // Price: Lower Low
+
+// Dinput3priceLL        = low[Dinput3lbR] < valuewhen(Dinput3plFound, low[Dinput3lbR], 1)
+
+// Dinput3bullCond       = Dinput3priceLL and Dinput3oscHL and Dinput3plFound   // Regular Bullish Condition
+
+// // Hidden Bullish
+// // Osc: Lower Low
+
+// Dinput3oscLL          = Dinput3[Dinput3lbR] < valuewhen(Dinput3plFound, Dinput3[Dinput3lbR], 1) and _inRange(Dinput3plFound[1])
+
+// // Price: Higher Low
+
+// Dinput3priceHL        = low[Dinput3lbR] > valuewhen(Dinput3plFound, low[Dinput3lbR], 1)
+
+// Dinput3hiddenBullCond = Dinput3priceHL and Dinput3oscLL and Dinput3plFound  // Hidden Bullish Condition
+
+// //------------------------------------------------------------------------------
+// // Regular Bearish
+// // Osc: Lower High
+
+// Dinput3oscLH          = Dinput3[Dinput3lbR] < valuewhen(Dinput3phFound, Dinput3[Dinput3lbR], 1) and _inRange(Dinput3phFound[1])
+
+// // Price: Higher High
+
+// Dinput3priceHH        = high[Dinput3lbR] > valuewhen(Dinput3phFound, high[Dinput3lbR], 1)
+
+// Dinput3bearCond       = Dinput3priceHH and Dinput3oscLH and Dinput3phFound  // Regular Bearish Condition
+
+// // Hidden Bearish
+// // Osc: Higher High
+// Dinput3oscHH          = Dinput3[Dinput3lbR] > valuewhen(Dinput3phFound, Dinput3[Dinput3lbR], 1) and _inRange(Dinput3phFound[1])
+
+// // Price: Lower High
+
+// Dinput3priceLH        = high[Dinput3lbR] < valuewhen(Dinput3phFound, high[Dinput3lbR], 1)
+
+// Dinput3hiddenBearCond = Dinput3priceLH and Dinput3oscHH and Dinput3phFound  // Hidden Bearish Condition
+
+
+// Dinput3 Divergences from Built In Divergence Script with Adjustable Lookback ////////////////////////////////////////////////////////////////
+
+// Divergences By RicardoSantos for Near Pivot Divergences
+
+fractal_top3 = f_fractalize(Dinput3) > 0 ? Dinput3[2] : na
+fractal_bot3 = f_fractalize(Dinput3) < 0 ? Dinput3[2] : na
+
+high_prev3  = valuewhen(fractal_top3, Dinput3[2], 0)[2]
+high_price3 = valuewhen(fractal_top3, high[2], 0)[2]
+low_prev3   = valuewhen(fractal_bot3, Dinput3[2], 0)[2]
+low_price3  = valuewhen(fractal_bot3, low[2], 0)[2]
+
+
+regular_bearish_div3 = fractal_top3  and high[2] > high_price3 and Dinput3[2] < high_prev3
+hidden_bearish_div3  = fractal_top3  and high[2] < high_price3 and Dinput3[2] > high_prev3
+regular_bullish_div3 = fractal_bot3  and low[2]  < low_price3  and Dinput3[2] > low_prev3
+hidden_bullish_div3  = fractal_bot3  and low[2]  > low_price3  and Dinput3[2] < low_prev3
+//-------------------------
+
+// Original
+
+
+col9  = ShowWaveTrend and showdivs3 and regular_bearish_div3 ? red       : ShowWaveTrend and hidden_bearish_div3 and showhidden3 ? maroon : na
+col10 = ShowWaveTrend and showdivs3 and regular_bullish_div3 ? #00FF00EB : ShowWaveTrend and hidden_bullish_div3 and showhidden3 ? green  : na
+
+
+// col9  = ShowWaveTrend and showdivs3 and (regular_bearish_div3 or Dinput3bearCond) ? red      : ShowWaveTrend and (hidden_bearish_div3 or Dinput3hiddenBearCond) and showhidden3 ? maroon : na
+// col10 = ShowWaveTrend and showdivs3 and (regular_bullish_div3 or Dinput3bullCond)? #00FF00EB : ShowWaveTrend and (hidden_bullish_div3 or Dinput3hiddenBullCond) and showhidden3 ? green  : na
+
+
+// Original
+
+plot(title='Wave Trend - Bearish Divergences', series=(showdivs3 or showhidden3) and fractal_top3 ? Dinput3vertoffsetplus[2]  : na, color=col9,  linewidth=3, offset=DivOffset3)
+plot(title='Wave Trend - Bullish Divergences', series=(showdivs3 or showhidden3) and fractal_bot3 ? Dinput3vertoffsetminus[2] : na, color=col10, linewidth=3, offset=DivOffset3)
+
+//
+
+
+// BearishAdjustedDivOffset3 = Dinput3phFound ? - Dinput3lbR + DivOffset3 : DivOffset3
+// BullishAdjustedDivOffset3 = Dinput3plFound ? - Dinput3lbR + DivOffset3 : DivOffset3
+
+// plot(title='Wave Trend - Bearish Divergences', series=(showdivs3 or showhidden3) and (fractal_top3 or Dinput3phFound) ? Dinput3vertoffsetplus[2]  : na, color=col9,  linewidth=3, offset=DivOffset3)
+// plot(title='Wave Trend - Bullish Divergences', series=(showdivs3 or showhidden3) and (fractal_bot3 or Dinput3plFound) ? Dinput3vertoffsetminus[2] : na, color=col10, linewidth=3, offset=DivOffset3)
+
+
+// 4th set of Divergences
+
+fractal_top4 = f_fractalize(Dinput4) > 0 ? Dinput4[2] : na
+fractal_bot4 = f_fractalize(Dinput4) < 0 ? Dinput4[2] : na
+
+high_prev4  = valuewhen(fractal_top4, Dinput4[2], 0)[2]
+high_price4 = valuewhen(fractal_top4, high[2], 0)[2]
+low_prev4   = valuewhen(fractal_bot4, Dinput4[2], 0)[2]
+low_price4  = valuewhen(fractal_bot4, low[2], 0)[2]
+
+
+regular_bearish_div4 = fractal_top4  and high[2] > high_price4 and Dinput4[2] < high_prev4
+hidden_bearish_div4  = fractal_top4  and high[2] < high_price4 and Dinput4[2] > high_prev4
+regular_bullish_div4 = fractal_bot4  and low[2]  < low_price4  and Dinput4[2] > low_prev4
+hidden_bullish_div4  = fractal_bot4  and low[2]  > low_price4  and Dinput4[2] < low_prev4
+//-------------------------
+
+col11 = ShowWaveTrend and ShowWaveTrendDelta and showdivs4 and regular_bearish_div4 ? red       : ShowWaveTrend and hidden_bearish_div4 and showhidden4 ? maroon : na
+col12 = ShowWaveTrend and ShowWaveTrendDelta and showdivs4 and regular_bullish_div4 ? #00FF00EB : ShowWaveTrend and hidden_bullish_div4 and showhidden4 ? green  : na
+
+plot(title='Wave Trend - Delta - Bearish Divergences', series=(showdivs4 or showhidden4) and fractal_top4 ? Dinput4[2] : na, color=col11, linewidth=2, offset=DivOffset4)
+plot(title='Wave Trend - Delta - Bullish Divergences', series=(showdivs4 or showhidden4) and fractal_bot4 ? Dinput4[2] : na, color=col12, linewidth=2, offset=DivOffset4)
+
+// WTosLevel2Color = (MoneyFlowBarPositionIn=="-50") and (WTosLevel2 == -50) ? color(green,100) : color(green,10)
+// WTosLevel2Color = (MoneyFlowBarPositionIn=="-50") and (WTosLevel2 == -50) ? color(green,100) : color(green,10)
+
+// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+max=hline(100,        "+100 - Oscillators Max Value",                  color=color(green,90),   linestyle=solid,   linewidth = 2)
+hline(90,                                                              color=color(gray, 80),   linestyle=solid,   linewidth = 1)
+hline(80,             "Stochastics - Over Bought",                     color=color(green,40),   linestyle=solid,   linewidth = 1)
+hline(70,             "Oscillator 1 - Over Bought",                    color=color(green,40),   linestyle=solid,   linewidth = 1)
+hline(60,             "Oscillator 1 - Down Trend Upper Range",         color=color(red,   0),   linestyle=solid,   linewidth = 1)    // Down Trend Upper Range 60 or 65
+// hline(55,             "Oscillator 1 & 2 - Mid Range",     color=color(red,  97),   linestyle=solid,   linewidth = 13)
+hline(50,             "Oscillator 1 & 2 - Mid Point",                  color=color(blue, 90),   linestyle=solid)
+// hline(45,             "Oscillator 1 & 2 - Mid Range",     color=color(green,96),   linestyle=solid,   linewidth = 13)
+hline(40,             "Oscillator 1 - Up Trend Lower Range",           color=color(green,15),   linestyle=solid,   linewidth = 1)    // Up Trend Lower Range
+hline(40,             "Oscillator 1 - Up Trend Lower Range Highlight", color=color(lime, 50),   linestyle=solid,   linewidth = 1)    // Up Trend Lower Range Highlight
+hline(30,             "Oscillator 1 - Over Sold",                      color=color(red,  55),   linestyle=solid)
+hline(20,             "Stochastics - Over Sold",                       color=color(red,  55),   linestyle=solid)
+hline(10,                                                              color=color(gray, 80),   linestyle=solid,   linewidth = 1)
+vob=hline(WTVOB,      "Wave Trend - Very Over Bought",                 color=color(green,40),   linestyle=dotted)
+hline(WTOB,           "Wave Trend - Over Bought",                      color=color(green,40),   linestyle=dotted)
+hline(0,              "Zero Line",                                     color=color(white, 0),   linestyle=solid,   linewidth=2)
+hline(-20,                                                             color=color(gray, 65),   linestyle=solid)
+hline(-30,                                                             color=color(gray, 65),   linestyle=solid)
+hline(WTOS,           "Wave Trend - Over Sold",                        color=color(red,  70),   linestyle=dotted)
+vos=hline(WTVOS,      "Wave Trend - Very Over Sold",                   color=color(red,  70),   linestyle=dotted)
+min=hline(-100,       "-100 - Oscillators Min Value",                  color=color(red,  90),   linestyle=solid,   linewidth = 2)
+
+// fill(max, vob, lime, transp= 97, title = "Wave Trend - Very Over Bought Area")
+// fill(min, vos, red,  transp= 98, title = "Wave Trend - Very Over Sold Area")
+
+
+// Divergence Alerts
+
+// Oscillator 1 Divergence Alerts
+
+alertcondition(regular_bearish_div1, title='Alert-Osc 1-Regular Bearish Divergence',       message='MarketVision B - Oscillator 1 - Regular Bearish Divergence')
+alertcondition(hidden_bearish_div1,  title='Alert-Osc 1-Hidden Bearish Divergence',        message='MarketVision B - Oscillator 1 - Hidden Bearish Divergence')
+alertcondition(regular_bullish_div1, title='Alert-Osc 1-Regular Bullish Divergence',       message='MarketVision B - Oscillator 1 - Regular Bullish Divergence')
+alertcondition(hidden_bullish_div1,  title='Alert-Osc 1-Hidden Bullish Divergence',        message='MarketVision B - Oscillator 1 - Hidden Bullish Divergence')
+
+// Stochastic Divergence Alerts
+
+alertcondition(regular_bearish_div2, title='Alert-Stochastic-Regular Bearish Divergence',  message='MarketVision B - Stochastic - Regular Bearish Divergence')
+alertcondition(hidden_bearish_div2,  title='Alert-Stochastic-Hidden Bearish Divergence',   message='MarketVision B - Stochastic - Hidden Bearish Divergence')
+alertcondition(regular_bullish_div2, title='Alert-Stochastic-Regular Bullish Divergence',  message='MarketVision B - Stochastic - Regular Bullish Divergence')
+alertcondition(hidden_bullish_div2,  title='Alert-Stochastic-Hidden Bullish Divergence',   message='MarketVision B - Stochastic - Hidden Bullish Divergence')
+
+// Wave Trend Divergence Alerts
+
+alertcondition(regular_bearish_div3, title='Alert-Wave Trend-Regular Bearish Divergence',  message='MarketVision B - Wave Trend - Regular Bearish Divergence')
+alertcondition(hidden_bearish_div3,  title='Alert-Wave Trend-Hidden Bearish Divergence',   message='MarketVision B - Wave Trend - Hidden Bearish Divergence')
+alertcondition(regular_bullish_div3, title='Alert-Wave Trend-Regular Bullish Divergence',  message='MarketVision B - Wave Trend - Regular Bullish Divergence')
+alertcondition(hidden_bullish_div3,  title='Alert-Wave Trend-Hidden Bullish Divergence',   message='MarketVision B - Wave Trend - Hidden Bullish Divergence')
+
+alertcondition(hidden_bearish_div3 or regular_bearish_div3,                                                 title='Alert-Wave Trend - Any Bearish Divergence ',  message='MarketVision B - Wave Trend - Any Bearish Divergence')
+alertcondition(hidden_bullish_div3 or regular_bullish_div3,                                                 title='Alert-Wave Trend - Any Bullish Divergence',   message='MarketVision B - Wave Trend - Any Bullish Divergence')
+alertcondition(hidden_bearish_div3 or regular_bearish_div3 or hidden_bullish_div3 or regular_bullish_div3,  title='Alert-Wave Trend - Any Divergence',           message='MarketVision B - Wave Trend - Any Divergence')
+
+// Wave Trend Yellow Wave Divergence Alerts
+
+alertcondition(regular_bearish_div4, title='Alert-WT Delta-Regular Bearish Divergence',    message='MarketVision B - WT Delta - Regular Bearish Divergence')
+alertcondition(hidden_bearish_div4,  title='Alert-WT Delta-Hidden Bearish Divergence',     message='MarketVision B - WT Delta - Hidden Bearish Divergence')
+alertcondition(regular_bullish_div4, title='Alert-WT Delta-Regular Bullish Divergence',    message='MarketVision B - WT Delta - Regular Bullish Divergence')
+alertcondition(hidden_bullish_div4,  title='Alert-WT Delta-Hidden Bullish Divergence',     message='MarketVision B - WT Delta - Hidden Bullish Divergence')
+
+alertcondition(regular_bearish_div4 or hidden_bearish_div4,                                                 title='Alert-WT Delta-Any Bearish Divergence',  message='MarketVision B - WT Delta - Any Bearish Divergence')
+alertcondition(regular_bullish_div4 or hidden_bullish_div4,                                                 title='Alert-WT Delta-Any Bullish Divergence',  message='MarketVision B - WT Delta - Any Bullish Divergence')
+alertcondition(regular_bearish_div4 or hidden_bearish_div4 or regular_bullish_div4 or hidden_bullish_div4,  title='Alert-WT Delta-Any Divergence',          message='MarketVision B - WT Delta - Any Divergence')
+
