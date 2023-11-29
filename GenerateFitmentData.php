@@ -47,7 +47,20 @@ class GenerateFitmentData extends Command
         
         $distinctSkus = $connection->fetchCol("SELECT DISTINCT sku FROM $mapTable");
         
+        $latestSku = '429129';
+        $processFlag = false;
+        
         foreach ($distinctSkus as $sku) {
+            
+            if($sku == '1131-2283') {
+                $this->logger->info("Found sku ".$sku."\r\n");
+                $processFlag = true;
+            }
+            
+            if(!$processFlag) {
+                continue;
+            }
+            
             $fitmentData = [];
             
             $valueIds = $connection->fetchCol("SELECT value_id FROM $mapTable WHERE sku = :sku", ['sku' => $sku]);
@@ -58,6 +71,8 @@ class GenerateFitmentData extends Command
                     $fitmentRow[] = $row['name'];
                     $valueId = $row['parent_id'];
                 }
+                
+                if(!isset($fitmentRow[0]) || !isset($fitmentRow[1]) || !isset($fitmentRow[2])) continue;
                 
                 // Reverse to get Year, Make, Model in correct order
                 $fitmentRow = array_reverse($fitmentRow);
@@ -91,9 +106,10 @@ class GenerateFitmentData extends Command
                 $product->setCustomAttribute('fitment', $htmlTable);
                 $this->productRepository->save($product);
                 
+                echo "Fitment data generated for SKU: $sku\r\n";
                 $this->logger->info("Fitment data generated for SKU: $sku");
-                sleep(5);
             } catch (\Exception $e) {
+                //echo "Error processing SKU $sku: " . $e->getMessage()."\r\n";
                 $this->logger->info("Error processing SKU $sku: " . $e->getMessage());
             }
         }
