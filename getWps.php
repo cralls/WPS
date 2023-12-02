@@ -92,7 +92,7 @@ function getBrands($apiToken, $brandId = null) {
     return $allBrands;
 }
 
-function getItems($brand, $apiToken, $objectManager) {
+function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null) {
     //$allItems = [];
     $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
     
@@ -109,9 +109,18 @@ function getItems($brand, $apiToken, $objectManager) {
             $url .= '?page[cursor]=' . $cursor;
         }
         
+        #$foundLastProcessedItem = ($lastProcessedItemId == null);
+        
         $response = getData($url, $apiToken);
         
         foreach($response['data'] as $item) {
+            
+            /*if (!$foundLastProcessedItem) {
+                if ($item['id'] == $lastProcessedItemId) {
+                    $foundLastProcessedItem = true;
+                }
+                continue;
+            }*/
             
             try {
                 $existingProduct = $productRepository->get($item['sku']);
@@ -344,8 +353,8 @@ function getItems($brand, $apiToken, $objectManager) {
         
         // Check if there's a next cursor and update the cursor variable
         $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
-    } while ($cursor); // Continue until there's no next cursor
-    
+    //} while ($cursor && !$foundLastProcessedItem); // Continue until there's no next cursor
+    } while ($cursor);
     //return $allItems;
 }
 
@@ -353,11 +362,31 @@ function getInventory($apiToken, $objectManager) {
     $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
     $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
     $productCollection->addAttributeToSelect('wps_item_id')
-    ->addFieldToFilter('wps_item_id', ['gt' => 0]);
+    ->addFieldToFilter('wps_item_id', ['gt' => 0])
+    ->joinField('qty',
+        'cataloginventory_stock_item',
+        'qty',
+        'product_id=entity_id',
+        'qty <= 0', // Filter for quantity 0 or less
+        'left')
+        ->getSelect()
+        ->group('e.entity_id'); // Add group by clause
     
+    $foundTargetSku = false;
     foreach ($productCollection as $product) {
+        
+        // Continue until SKU
+        if (!$foundTargetSku) {
+            if ($product->getSku() == '53-50046') {
+                $foundTargetSku = true;
+            }
+            continue;
+        }
+        
         $inventoryUrl = "https://api.wps-inc.com/inventory?filter[item_id]={$product->getWpsItemId()}";
         $inventoryData = getData($inventoryUrl, $apiToken);
+        
+        if(!isset($inventoryData['data'][0])) continue;
         
         $stockChange = $objectManager->get('Magestore\InventorySuccess\Model\StockActivity\StockChange');
         
@@ -370,7 +399,7 @@ function getInventory($apiToken, $objectManager) {
         $stockItem = $stockRegistry->getStockItem($product->getId());
         $totalQty = $inventoryData['data'][0]['total'];
         
-        if ($totalQty > 0) {
+        if ($stockItem->getTotalQty() > 0) {
             $stockItem->setIsInStock(true);
         } else {
             $stockItem->setIsInStock(false);
@@ -379,7 +408,7 @@ function getInventory($apiToken, $objectManager) {
         $stockRegistry->updateStockItemBySku($product->getSku(), $stockItem);
         
         // Echo the SKU of the product that was updated
-        echo "Updated product SKU: " . $product->getSku() . ", Stock Status: " . ($totalQty > 0 ? "In Stock" : "Out of Stock") . "\n";
+        echo "[".date('Y-m-d H:i:s')." - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($stockItem->getTotalQty() > 0 ? "In Stock" : "Out of Stock") . "\n";
     }
 }
 
@@ -403,13 +432,14 @@ if (in_array('getItems', $argv)) {
     foreach($allBrands as $brand) {
         if ($brand['name'] === 'FLY RACING') {
             $processBrands = true;
+            $lastProcessedItemId = true;
         }
         
         if (!$processBrands) {
             continue;
         }
         
-        $items = getItems($brand, $apiToken, $objectManager);
+        $items = getItems($brand, $apiToken, $objectManager, $lastProcessedItemId);
     }
 }
 
