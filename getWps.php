@@ -100,6 +100,7 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
     
     
     $cursor = null; // Start with no cursor
+    $foundLastProcessedItem = ($lastProcessedItemId == null);
     
     do {
         $url = $base_url;
@@ -109,18 +110,21 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             $url .= '?page[cursor]=' . $cursor;
         }
         
-        #$foundLastProcessedItem = ($lastProcessedItemId == null);
-        
         $response = getData($url, $apiToken);
         
-        foreach($response['data'] as $item) {
-            
-            /*if (!$foundLastProcessedItem) {
-                if ($item['id'] == $lastProcessedItemId) {
-                    $foundLastProcessedItem = true;
+        if (!$foundLastProcessedItem) {
+            foreach($response['data'] as $item) {
+                if (!$foundLastProcessedItem) {
+                    if ($item['id'] == $lastProcessedItemId) {
+                        $foundLastProcessedItem = true;
+                    }
+                    $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
+                    continue;
                 }
-                continue;
-            }*/
+            }
+        }
+        
+        foreach($response['data'] as $item) {
             
             try {
                 $existingProduct = $productRepository->get($item['sku']);
@@ -138,6 +142,9 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
                 // If the product does not exist, continue with creation
             }
             
+            // Let's get all the items included data
+            $wpsItemData = getData("https://api.wps-inc.com/items/crutch/{$item['sku']}?include=product,country,images,attributevalues,inventory", $apiToken);
+            
             // Check if Item is Available
             if(in_array($item['status'], ['NLA'])) continue;
             
@@ -146,12 +153,12 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             /************************
              * Get product data for description etc..
              ************************/
-            $wpsProductData = getData("https://api.wps-inc.com/items/{$item['id']}/product", $apiToken);
+            $wpsProductData = $wpsItemData['data']['product']['data'];
             
             /************************
              * Get product features (bullet points) for short description
              ************************/
-            $wpsProductFeatureData = getData("https://api.wps-inc.com/products/{$wpsProductData['data']['id']}/features", $apiToken);
+            $wpsProductFeatureData = getData("https://api.wps-inc.com/products/{$wpsProductData['id']}/features", $apiToken);
             $shortDescription = "<ul>";
             $description = "<ul>";
             foreach($wpsProductFeatureData['data'] as $key => $feature) {
@@ -161,19 +168,19 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             $shortDescription .= "</ul>";
             $description .= "</ul>";
             $magentoProduct->setData('short_description', $shortDescription);
-            $magentoProduct->setData('description', $wpsProductData['data']['description']."<br>".$description);
+            $magentoProduct->setData('description', $wpsProductData['description']."<br>".$description);
             
             /************************
              * Get product Country
              ************************/
-            $wpsCountryData = getData("https://api.wps-inc.com/items/{$item['id']}/country", $apiToken);
+            $wpsCountryData = $wpsItemData['data']['country'];
             $countryCode = substr($wpsCountryData['data']['code'], 0, 2);
             $magentoProduct->setCountryOfManufacture($countryCode);
             
             /************************
              * Get product Images
              ************************/
-            $wpsImageData = getData("https://api.wps-inc.com/items/{$item['id']}/images", $apiToken);
+            $wpsImageData = $wpsItemData['data']['images'];
             
             $mediaDirectory = $objectManager->get('Magento\Framework\Filesystem')
             ->getDirectoryRead(\Magento\Framework\App\Filesystem\DirectoryList::MEDIA);
@@ -237,7 +244,7 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             /************************
              * Get product attributes
              ************************/
-            $attributeResponses = getData("https://api.wps-inc.com/items/{$item['id']}/attributevalues", $apiToken);
+            $attributeResponses = $wpsItemData['data']['attributevalues'];
             $attributeRepository = $objectManager->get('Magento\Eav\Api\AttributeRepositoryInterface');
             $eavConfig = $objectManager->get('Magento\Eav\Model\Config');
             
@@ -277,6 +284,7 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
                     
                     // If the value does not exist, create it
                     if (!$valueExists) {
+                        echo "Adding new attribute ".$attributeResponse['name']."\r\n";
                         $option = ['value' => [$attributeResponse['name']], 'label' => $attributeResponse['name']];
                         $attribute->addData(['option' => ['value' => $option]]);
                         $attributeRepository->save($attribute);
@@ -334,6 +342,11 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             // Save the product
             $magentoProduct->save();
             
+            /************************
+             * Set the Inventory
+             ************************/
+            setInventory($wpsItemData['data']['inventory'], $magentoProduct, $objectManager);
+            
             // Set Supplier
             $supplierObserver = $objectManager->get('\Magestore\SupplierSuccess\Observer\Catalog\ControllerProductSaveAfter');
             $data = $supplierObserver->processParams($magentoProduct, $suppliers['data']);
@@ -343,11 +356,10 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
                 $supplierObserver->addSupplierProduct($unsaveData);
             }
             
-            // Stop the script after creating the first product
             echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n";
             error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/var/log/wps.log');
             
-            sleep(1); // Give the API a break
+            //sleep(1); // Give the API a break
         }
         //$allItems = array_merge($allItems, $response['data']); 
         
@@ -358,7 +370,35 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
     //return $allItems;
 }
 
-function getInventory($apiToken, $objectManager) {
+function setInventory($inventory, $product, $objectManager) {
+    $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
+    $inventoryData = $inventory;
+    
+    if(!isset($inventoryData['data'])) return true;
+    
+    $stockChange = $objectManager->get('Magestore\InventorySuccess\Model\StockActivity\StockChange');
+    
+    $warehouseId = 5;
+    $productId = $product->getId();
+    $qtyChange = $inventoryData['data']['total'];
+    
+    $stockChange->update($warehouseId, $productId, $qtyChange);
+    
+    $stockItem = $stockRegistry->getStockItem($product->getId());
+    
+    if ($stockItem->getTotalQty() > 0) {
+        $stockItem->setIsInStock(true);
+    } else {
+        $stockItem->setIsInStock(false);
+    }
+    
+    $stockRegistry->updateStockItemBySku($product->getSku(), $stockItem);
+    
+    // Echo the SKU of the product that was updated
+    echo "[".date('Y-m-d H:i:s')."] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($stockItem->getTotalQty() > 0 ? "In Stock" : "Out of Stock") . "\n";
+}
+
+function updateInventory($apiToken, $objectManager) {
     $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
     $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
     $productCollection->addAttributeToSelect('wps_item_id')
@@ -372,12 +412,12 @@ function getInventory($apiToken, $objectManager) {
         ->getSelect()
         ->group('e.entity_id'); // Add group by clause
     
-    $foundTargetSku = false;
+    $foundTargetSku = true;
     foreach ($productCollection as $product) {
         
         // Continue until SKU
         if (!$foundTargetSku) {
-            if ($product->getSku() == '53-50046') {
+            if ($product->getSku() == '72-7308YL') {
                 $foundTargetSku = true;
             }
             continue;
@@ -412,6 +452,7 @@ function getInventory($apiToken, $objectManager) {
     }
 }
 
+date_timezone_set("America/Boise");
 $apiToken = getenv('WPS_API_KEY');
 
 // Main script execution.
@@ -430,19 +471,271 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'FLY RACING') {
+        if ($brand['name'] === 'GMAX') {
             $processBrands = true;
-            $lastProcessedItemId = true;
+            $lastProcessedItemId = '72-7122X';
         }
         
         if (!$processBrands) {
             continue;
         }
         
+        echo "[".date('Y-m-d H:i:s')."] Starting on ".$brand["name"]."\r\n";
         $items = getItems($brand, $apiToken, $objectManager, $lastProcessedItemId);
     }
 }
 
-if (in_array('getInventory', $argv)) {
+if (in_array('updateInventory', $argv)) {
     getInventory($apiToken, $objectManager);
 }
+
+
+
+####### API Item Response #######
+/*
+Array
+(
+    [data] => Array
+        (
+            [id] => 66005
+            [brand_id] => 176
+            [country_id] => 44
+            [product_id] => 221799
+            [sku] => 462-91002X
+            [name] => GM-54S DSG AZTEC HELMET BLACK 2X
+            [list_price] => 244.95
+            [standard_dealer_price] => 159.99
+            [supplier_product_id] => 2548218
+            [length] => 15.1
+            [width] => 11
+            [height] => 11.3
+            [weight] => 5.68
+            [upc] => 191361026317
+            [superseded_sku] =>
+            [status_id] => NLA
+            [status] => NLA
+            [unit_of_measurement_id] => 12
+            [has_map_policy] =>
+            [sort] => 5
+            [created_at] => 2016-06-17 20:48:39
+            [updated_at] => 2023-10-08 08:54:41
+            [published_at] => 2016-06-17 20:48:39
+            [product_type] => Helmets
+            [mapp_price] => 0.00
+            [carb] =>
+            [propd1] =>
+            [propd2] =>
+            [prop_65_code] =>
+            [prop_65_detail] =>
+            [drop_ship_fee] => FR
+            [drop_ship_eligible] => 1
+            [attributevalues] => Array
+                (
+                    [data] => Array
+                        (
+                            [0] => Array
+                                (
+                                    [id] => 848
+                                    [attributekey_id] => 15
+                                    [name] => Black
+                                    [sort] => 0
+                                    [created_at] => 2016-06-17 20:53:25
+                                    [updated_at] => 2021-10-29 18:30:25
+                                )
+
+                            [1] => Array
+                                (
+                                    [id] => 1049
+                                    [attributekey_id] => 1
+                                    [name] => Helmets
+                                    [sort] => 0
+                                    [created_at] => 2016-06-17 20:53:25
+                                    [updated_at] => 2016-06-17 20:53:25
+                                )
+
+                            [2] => Array
+                                (
+                                    [id] => 2407
+                                    [attributekey_id] => 13
+                                    [name] => 2X-Large
+                                    [sort] => 600
+                                    [created_at] => 2016-06-22 23:28:04
+                                    [updated_at] => 2016-06-22 23:28:04
+                                )
+
+                            [3] => Array
+                                (
+                                    [id] => 10326
+                                    [attributekey_id] => 287
+                                    [name] => GM-54S
+                                    [sort] => 0
+                                    [created_at] => 2020-06-03 22:23:30
+                                    [updated_at] => 2023-06-22 16:12:47
+                                )
+
+                        )
+
+                )
+
+            [country] => Array
+                (
+                    [data] => Array
+                        (
+                            [id] => 44
+                            [code] => CN
+                            [name] => China (Mainland)
+                            [created_at] => 2016-05-04 19:22:10
+                            [updated_at] => 2016-05-04 19:22:10
+                        )
+
+                )
+
+            [images] => Array
+                (
+                    [data] => Array
+                        (
+                            [0] => Array
+                                (
+                                    [id] => 50566
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => 14db-57f69371915ac.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1480284
+                                    [signature] => 1abdb65c95777bad29b521434767abf0f0cd3c267776bb0888004874602a928f
+                                    [created_at] => 2016-10-06 18:09:58
+                                    [updated_at] => 2017-02-23 21:15:23
+                                )
+
+                            [1] => Array
+                                (
+                                    [id] => 50567
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => 451d-57f6937d5ec91.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1637860
+                                    [signature] => 246fcbfafb427297da6060f3b6600df113f1227279388267f566b2df8f2e85a6
+                                    [created_at] => 2016-10-06 18:10:07
+                                    [updated_at] => 2017-02-23 21:15:24
+                                )
+
+                            [2] => Array
+                                (
+                                    [id] => 50568
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => a7a7-57f6938a21204.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1402954
+                                    [signature] => 25e95e77f49c3152ee3a71a6f3540a2db0cd9dcc8d7784af3da9e30bc7200ce1
+                                    [created_at] => 2016-10-06 18:10:19
+                                    [updated_at] => 2017-02-23 21:15:24
+                                )
+
+                            [3] => Array
+                                (
+                                    [id] => 50569
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => eee9-57f69392d4d65.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1436064
+                                    [signature] => 0d1050419875ba11a59514d2d212b1b22a54b8769e2cbc122ed9019ced6e7653
+                                    [created_at] => 2016-10-06 18:10:29
+                                    [updated_at] => 2017-02-23 21:15:24
+                                )
+
+                            [4] => Array
+                                (
+                                    [id] => 50570
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => 82cc-57f6939e530bf.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1516489
+                                    [signature] => ae07833039f34fdff7fb5e5332794f8eb1467669b2a581e9409e5f41e2fd73f8
+                                    [created_at] => 2016-10-06 18:10:39
+                                    [updated_at] => 2017-02-23 21:15:25
+                                )
+
+                            [5] => Array
+                                (
+                                    [id] => 50571
+                                    [domain] => cdn.wpsstatic.com/
+                                    [path] => images/
+                                    [filename] => e063-57f693a88b260.jpg
+                                    [alt] =>
+                                    [mime] => image/jpeg
+                                    [width] => 2000
+                                    [height] => 2000
+                                    [size] => 1350714
+                                    [signature] => 4849b1237638fbe1dba951b51b3fe41d186d2a36e6138a625911c09acd998c94
+                                    [created_at] => 2016-10-06 18:10:54
+                                    [updated_at] => 2017-02-23 21:15:25
+                                )
+
+                        )
+
+                )
+
+            [inventory] => Array
+                (
+                    [data] => Array
+                        (
+                            [id] => 634298
+                            [item_id] => 66005
+                            [sku] => 462-91002X
+                            [ca_warehouse] => 0
+                            [ga_warehouse] => 0
+                            [id_warehouse] => 0
+                            [in_warehouse] => 0
+                            [pa_warehouse] => 0
+                            [pa2_warehouse] => 0
+                            [tx_warehouse] => 0
+                            [total] => 0
+                            [created_at] => 2021-11-20 14:37:39
+                            [updated_at] => 2021-11-26 23:25:28
+                        )
+
+                )
+
+            [product] => Array
+                (
+                    [data] => Array
+                        (
+                            [id] => 221799
+                            [designation_id] => 21
+                            [name] => DSG GM-54S Aztec Helmet
+                            [alternate_name] =>
+                            [care_instructions] =>
+                            [description] => The DSG GMAX 54S uses the GMAX Ultimate Flip-Up Jaw Breath Guard System. This system allows the snap in breath guard to remain in the jaw when the jaw section is lifted, thus eliminating the additional hassle of removing your gloves.
+                            [sort] => 5
+                            [image_360_id] =>
+                            [image_360_preview_id] =>
+                            [size_chart_id] =>
+                            [created_at] => 2017-02-17 18:44:46
+                            [updated_at] => 2023-10-08 08:54:41
+                        )
+
+                )
+
+        )
+
+)
+*/
