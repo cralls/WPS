@@ -94,7 +94,7 @@ function getBrands($apiToken, $brandId = null) {
 
 function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null) {
     try {
-        //$allItems = [];
+        throw new Exception("Induced error for testing");
         $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
         
         $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
@@ -371,7 +371,7 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
         //return $allItems;
     } catch (\Exception $e) {
         // Call custom error handler with exception details
-        customErrorHandler(E_USER_ERROR, $e->getMessage(), $e->getFile(), $e->getLine());
+        customErrorHandler($e->getMessage(), $e->getFile(), $e->getLine());
         
         // Optionally, re-throw the exception if you want it to be handled further up the chain
         throw $e;
@@ -460,30 +460,48 @@ function updateInventory($apiToken, $objectManager) {
     }
 }
 
-function customErrorHandler($severity, $message, $file, $line) {
-    if (!(error_reporting() & $severity)) {
-        return;
-    }
-    
+function customErrorHandler($message, $file, $line) {
     $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
-    $errorMsg = "Error caught: severity: {$severity}, Message: {$message}, File: {$file}, Line: {$line}";
+    $errorMsg = "Error caught: Message: {$message}\r\n File: {$file}\r\n Line: {$line}";
     
     /** @var \Magento\Framework\Mail\Template\TransportBuilder $transportBuilder */
     $transportBuilder = $objectManager->get('\Magento\Framework\Mail\Template\TransportBuilder');
     
-    $transport = $transportBuilder->setTemplateIdentifier('15') // Email template identifier
-    ->setTemplateOptions(['area' => 'frontend', 'store' => \Magento\Store\Model\Store::DEFAULT_STORE_ID])
-    ->setTemplateVars(['data' => ['message' => $errorMsg]])
-    ->setFrom('general') // Email sender
-    ->addTo('casey.ralls@happy-trail.com', 'Casey Ralls')
-    ->getTransport();
+    // Get the inline translation object
+    $inlineTranslation = $objectManager->get('Magento\Framework\Translate\Inline\StateInterface');
     
+    // Suspend inline translation
+    $inlineTranslation->suspend();
+    
+    $templateId = '15';
+    $fromEmail = 'web.sales@happy-trail.com';
+    $fromName = 'Happy Trails';
+    $toEmail = 'cralls@vectorns.com';
+    
+    $templateVars = [
+        'msg' => $errorMsg
+    ];
+    
+    $from = ['email' => $fromEmail, 'name' => $fromName];
+    
+    $storeScope = \Magento\Store\Model\ScopeInterface::SCOPE_STORE;
+    $templateOptions = [
+        'area' => \Magento\Framework\App\Area::AREA_FRONTEND,
+        'store' => \Magento\Store\Model\Store::DEFAULT_STORE_ID
+    ];
+    $transport = $transportBuilder->setTemplateIdentifier($templateId, $storeScope)
+    ->setTemplateOptions($templateOptions)
+    ->setTemplateVars($templateVars)
+    ->setFrom($from)
+    ->addTo($toEmail)
+    ->getTransport();
     $transport->sendMessage();
+    
+    $inlineTranslation->resume();
 }
-set_error_handler("customErrorHandler");
 
 
-date_timezone_set("America/Boise");
+date_default_timezone_set("America/Boise");
 $apiToken = getenv('WPS_API_KEY');
 
 // Main script execution.
@@ -502,9 +520,9 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'HIGHWAY 21') {
+        if ($brand['name'] === 'K&L') {
             $processBrands = true;
-            $lastProcessedItemId = '489-12132T';
+            $lastProcessedItemId = '135-6355';
         }
         
         if (!$processBrands) {
