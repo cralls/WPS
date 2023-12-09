@@ -93,281 +93,289 @@ function getBrands($apiToken, $brandId = null) {
 }
 
 function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null) {
-    //$allItems = [];
-    $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
-    
-    $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
-    
-    
-    $cursor = null; // Start with no cursor
-    $foundLastProcessedItem = ($lastProcessedItemId == null);
-    
-    do {
-        $url = $base_url;
+    try {
+        //$allItems = [];
+        $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
         
-        // If there is a cursor, add it as a query parameter
-        if ($cursor) {
-            $url .= '?page[cursor]=' . $cursor;
-        }
+        $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
         
-        $response = getData($url, $apiToken);
         
-        if (!$foundLastProcessedItem) {
-            foreach($response['data'] as $item) {
-                if (!$foundLastProcessedItem) {
-                    if ($item['id'] == $lastProcessedItemId) {
-                        $foundLastProcessedItem = true;
-                    }
-                    $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
-                    continue;
-                }
-            }
-        }
+        $cursor = null; // Start with no cursor
+        $foundLastProcessedItem = ($lastProcessedItemId == null);
         
-        foreach($response['data'] as $item) {
+        do {
+            $url = $base_url;
             
-            try {
-                $existingProduct = $productRepository->get($item['sku']);
-                
-                // Check if wps_item_id is set, if not, update it
-                if ($existingProduct->getWpsItemId() == '' && $existingProduct->getAccountingCategory() == '6392') {
-                    echo ( "[".date('Y-m-d H:i:s')."] Setting wps_item_id for ".$existingProduct->getSku()." to ".$item['id']."\r\n");
-                    $existingProduct->setWpsItemId($item['id']);
-                    $productRepository->save($existingProduct);
-                }
-                
-                // If the product exists, skip to the next item
-                continue;
-            } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
-                // If the product does not exist, continue with creation
+            // If there is a cursor, add it as a query parameter
+            if ($cursor) {
+                $url .= '?page[cursor]=' . $cursor;
             }
             
-            // Let's get all the items included data
-            $wpsItemData = getData("https://api.wps-inc.com/items/crutch/{$item['sku']}?include=product,country,images,attributevalues,inventory", $apiToken);
+            $response = getData($url, $apiToken);
             
-            // Check if Item is Available
-            if(in_array($item['status'], ['NLA'])) continue;
-            
-            $magentoProduct = $objectManager->create('Magento\Catalog\Model\Product');
-            
-            /************************
-             * Get product data for description etc..
-             ************************/
-            $wpsProductData = $wpsItemData['data']['product']['data'];
-            
-            /************************
-             * Get product features (bullet points) for short description
-             ************************/
-            $wpsProductFeatureData = getData("https://api.wps-inc.com/products/{$wpsProductData['id']}/features", $apiToken);
-            $shortDescription = "<ul>";
-            $description = "<ul>";
-            foreach($wpsProductFeatureData['data'] as $key => $feature) {
-                $shortDescription .= $key < 4 ? "<li>".$feature['name']."</li>" : '';
-                $description .= "<li>".$feature['name']."</li>";
-            }
-            $shortDescription .= "</ul>";
-            $description .= "</ul>";
-            $magentoProduct->setData('short_description', $shortDescription);
-            $magentoProduct->setData('description', $wpsProductData['description']."<br>".$description);
-            
-            /************************
-             * Get product Country
-             ************************/
-            $wpsCountryData = $wpsItemData['data']['country'];
-            $countryCode = substr($wpsCountryData['data']['code'], 0, 2);
-            $magentoProduct->setCountryOfManufacture($countryCode);
-            
-            /************************
-             * Get product Images
-             ************************/
-            $wpsImageData = $wpsItemData['data']['images'];
-            
-            $mediaDirectory = $objectManager->get('Magento\Framework\Filesystem')
-            ->getDirectoryRead(\Magento\Framework\App\Filesystem\DirectoryList::MEDIA);
-            
-            foreach ($wpsImageData['data'] as $image) {
-                $imageUrl = 'https://' . $image['domain'] . $image['path'] . $image['filename'];
-                $imageContent = file_get_contents($imageUrl);
-                
-                $localDir = $mediaDirectory->getAbsolutePath('catalog/product');
-                // Check and modify the file extension if necessary
-                $pathInfo = pathinfo($imageUrl);
-                if (strtolower($pathInfo['extension']) === 'jfif') {
-                    $pathInfo['extension'] = 'jpg';
-                    $pathInfo['basename'] = $pathInfo['filename'] . '.' . $pathInfo['extension'];
-                }
-                $newFileName = $localDir . $pathInfo['basename'];
-                
-                file_put_contents($newFileName, $imageContent);
-                
-                // Resize image
-                $imageType = exif_imagetype($newFileName);
-                if ($imageType == IMAGETYPE_JPEG) {
-                    $imageResource = imagecreatefromjpeg($newFileName);
-                } elseif ($imageType == IMAGETYPE_PNG) {
-                    $imageResource = imagecreatefrompng($newFileName);
-                }
-                $width = imagesx($imageResource);
-                $height = imagesy($imageResource);
-                $longest_side = max($width, $height);
-                $scale = 570 / $longest_side;
-                $new_width = round($width * $scale);
-                $new_height = round($height * $scale);
-                $new_image = imagecreatetruecolor(570, 570);
-                $white = imagecolorallocate($new_image, 255, 255, 255);
-                imagefill($new_image, 0, 0, $white);
-                imagecopyresampled($new_image, $imageResource, (570 - $new_width) / 2, (570 - $new_height) / 2, 0, 0, $new_width, $new_height, $width, $height);
-                if ($imageType == IMAGETYPE_JPEG) {
-                    imagejpeg($new_image, $newFileName);
-                } elseif ($imageType == IMAGETYPE_PNG) {
-                    imagepng($new_image, $newFileName);
-                }
-                
-                // Add image to media gallery
-                $magentoProduct->addImageToMediaGallery($newFileName, ['image', 'small_image', 'thumbnail'], false, false);
-            }
-            
-            /************************
-             * Setup Supplier
-             ************************/
-            $suppliers = array();
-            $suppliers['data'][] = array(
-                'id' => 91,
-                'supplier_code' => 'WP',
-                'product_supplier_sku' => $item['supplier_product_id'],
-                'cost' => $item['standard_dealer_price'],
-                'tax' => 0,
-                'position' => 1,
-                'record_id' => 91
-            );
-            
-            /************************
-             * Get product attributes
-             ************************/
-            $attributeResponses = $wpsItemData['data']['attributevalues'];
-            $attributeRepository = $objectManager->get('Magento\Eav\Api\AttributeRepositoryInterface');
-            $eavConfig = $objectManager->get('Magento\Eav\Model\Config');
-            
-            // Inject manufacturer, accounting_category and country set it gets set
-            $attributeResponses['data'][] = ['attributekey_id'=>1,'name'=>$brand['name']];
-            $attributeResponses['data'][] = ['attributekey_id'=>2,'name'=>'PAM-WPS'];
-            
-            foreach ($attributeResponses['data'] as $attributeResponse) {
-                
-                $attributeCode = '';
-                if ($attributeResponse['attributekey_id'] == 1) {
-                    $attributeCode = 'manufacturer';
-                } elseif ($attributeResponse['attributekey_id'] == 13) {
-                    $attributeCode = 'size';
-                } elseif ($attributeResponse['attributekey_id'] == 15) {
-                    $attributeCode = 'color';
-                } elseif ($attributeResponse['attributekey_id'] == 2) {
-                    $attributeCode = 'accounting_category';
-                } elseif ($attributeResponse['attributekey_id'] == 3) {
-                    $attributeCode = 'country_of_manufacture';
-                }
-                
-                if ($attributeCode) {
-                    //die("attributeCode is ".$attributeCode);
-                    $attribute = $eavConfig->getAttribute('catalog_product', $attributeCode);
-                    $options = $attribute->getSource()->getAllOptions();
-                    
-                    // Check if the attribute value exists
-                    $valueExists = false;
-                    foreach ($options as $option) {
-                        if ($option['label'] == $attributeResponse['name']) {
-                            $magentoProduct->setData($attributeCode, $option['value']);
-                            $valueExists = true;
-                            break;
+            if (!$foundLastProcessedItem) {
+                foreach($response['data'] as $item) {
+                    if (!$foundLastProcessedItem) {
+                        if ($item['id'] == $lastProcessedItemId) {
+                            $foundLastProcessedItem = true;
                         }
+                        $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
+                        continue;
+                    }
+                }
+            }
+            
+            foreach($response['data'] as $item) {
+                
+                try {
+                    $existingProduct = $productRepository->get($item['sku']);
+                    
+                    // Check if wps_item_id is set, if not, update it
+                    if ($existingProduct->getWpsItemId() == '' && $existingProduct->getAccountingCategory() == '6392') {
+                        echo ( "[".date('Y-m-d H:i:s')."] Setting wps_item_id for ".$existingProduct->getSku()." to ".$item['id']."\r\n");
+                        $existingProduct->setWpsItemId($item['id']);
+                        $productRepository->save($existingProduct);
                     }
                     
-                    // If the value does not exist, create it
-                    if (!$valueExists) {
-                        echo "Adding new attribute ".$attributeResponse['name']."\r\n";
-                        $option = ['value' => [$attributeResponse['name']], 'label' => $attributeResponse['name']];
-                        $attribute->addData(['option' => ['value' => $option]]);
-                        $attributeRepository->save($attribute);
-                        
-                        // Reload to get the new option ID
+                    // If the product exists, skip to the next item
+                    continue;
+                } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+                    // If the product does not exist, continue with creation
+                }
+                
+                // Let's get all the items included data
+                $wpsItemData = getData("https://api.wps-inc.com/items/crutch/{$item['sku']}?include=product,country,images,attributevalues,inventory", $apiToken);
+                
+                // Check if Item is Available
+                if(in_array($item['status'], ['NLA'])) continue;
+                
+                $magentoProduct = $objectManager->create('Magento\Catalog\Model\Product');
+                
+                /************************
+                 * Get product data for description etc..
+                 ************************/
+                $wpsProductData = $wpsItemData['data']['product']['data'];
+                
+                /************************
+                 * Get product features (bullet points) for short description
+                 ************************/
+                $wpsProductFeatureData = getData("https://api.wps-inc.com/products/{$wpsProductData['id']}/features", $apiToken);
+                $shortDescription = "<ul>";
+                $description = "<ul>";
+                foreach($wpsProductFeatureData['data'] as $key => $feature) {
+                    $shortDescription .= $key < 4 ? "<li>".$feature['name']."</li>" : '';
+                    $description .= "<li>".$feature['name']."</li>";
+                }
+                $shortDescription .= "</ul>";
+                $description .= "</ul>";
+                $magentoProduct->setData('short_description', $shortDescription);
+                $magentoProduct->setData('description', $wpsProductData['description']."<br>".$description);
+                
+                /************************
+                 * Get product Country
+                 ************************/
+                $wpsCountryData = $wpsItemData['data']['country'];
+                $countryCode = substr($wpsCountryData['data']['code'], 0, 2);
+                $magentoProduct->setCountryOfManufacture($countryCode);
+                
+                /************************
+                 * Get product Images
+                 ************************/
+                $wpsImageData = $wpsItemData['data']['images'];
+                
+                $mediaDirectory = $objectManager->get('Magento\Framework\Filesystem')
+                ->getDirectoryRead(\Magento\Framework\App\Filesystem\DirectoryList::MEDIA);
+                
+                foreach ($wpsImageData['data'] as $image) {
+                    $imageUrl = 'https://' . $image['domain'] . $image['path'] . $image['filename'];
+                    $imageContent = file_get_contents($imageUrl);
+                    
+                    $localDir = $mediaDirectory->getAbsolutePath('catalog/product');
+                    // Check and modify the file extension if necessary
+                    $pathInfo = pathinfo($imageUrl);
+                    if (strtolower($pathInfo['extension']) === 'jfif') {
+                        $pathInfo['extension'] = 'jpg';
+                        $pathInfo['basename'] = $pathInfo['filename'] . '.' . $pathInfo['extension'];
+                    }
+                    $newFileName = $localDir . $pathInfo['basename'];
+                    
+                    file_put_contents($newFileName, $imageContent);
+                    
+                    // Resize image
+                    $imageType = exif_imagetype($newFileName);
+                    if ($imageType == IMAGETYPE_JPEG) {
+                        $imageResource = imagecreatefromjpeg($newFileName);
+                    } elseif ($imageType == IMAGETYPE_PNG) {
+                        $imageResource = imagecreatefrompng($newFileName);
+                    }
+                    $width = imagesx($imageResource);
+                    $height = imagesy($imageResource);
+                    $longest_side = max($width, $height);
+                    $scale = 570 / $longest_side;
+                    $new_width = round($width * $scale);
+                    $new_height = round($height * $scale);
+                    $new_image = imagecreatetruecolor(570, 570);
+                    $white = imagecolorallocate($new_image, 255, 255, 255);
+                    imagefill($new_image, 0, 0, $white);
+                    imagecopyresampled($new_image, $imageResource, (570 - $new_width) / 2, (570 - $new_height) / 2, 0, 0, $new_width, $new_height, $width, $height);
+                    if ($imageType == IMAGETYPE_JPEG) {
+                        imagejpeg($new_image, $newFileName);
+                    } elseif ($imageType == IMAGETYPE_PNG) {
+                        imagepng($new_image, $newFileName);
+                    }
+                    
+                    // Add image to media gallery
+                    $magentoProduct->addImageToMediaGallery($newFileName, ['image', 'small_image', 'thumbnail'], false, false);
+                }
+                
+                /************************
+                 * Setup Supplier
+                 ************************/
+                $suppliers = array();
+                $suppliers['data'][] = array(
+                    'id' => 91,
+                    'supplier_code' => 'WP',
+                    'product_supplier_sku' => $item['supplier_product_id'],
+                    'cost' => $item['standard_dealer_price'],
+                    'tax' => 0,
+                    'position' => 1,
+                    'record_id' => 91
+                );
+                
+                /************************
+                 * Get product attributes
+                 ************************/
+                $attributeResponses = $wpsItemData['data']['attributevalues'];
+                $attributeRepository = $objectManager->get('Magento\Eav\Api\AttributeRepositoryInterface');
+                $eavConfig = $objectManager->get('Magento\Eav\Model\Config');
+                
+                // Inject manufacturer, accounting_category and country set it gets set
+                $attributeResponses['data'][] = ['attributekey_id'=>1,'name'=>$brand['name']];
+                $attributeResponses['data'][] = ['attributekey_id'=>2,'name'=>'PAM-WPS'];
+                
+                foreach ($attributeResponses['data'] as $attributeResponse) {
+                    
+                    $attributeCode = '';
+                    if ($attributeResponse['attributekey_id'] == 1) {
+                        $attributeCode = 'manufacturer';
+                    } elseif ($attributeResponse['attributekey_id'] == 13) {
+                        $attributeCode = 'size';
+                    } elseif ($attributeResponse['attributekey_id'] == 15) {
+                        $attributeCode = 'color';
+                    } elseif ($attributeResponse['attributekey_id'] == 2) {
+                        $attributeCode = 'accounting_category';
+                    } elseif ($attributeResponse['attributekey_id'] == 3) {
+                        $attributeCode = 'country_of_manufacture';
+                    }
+                    
+                    if ($attributeCode) {
+                        //die("attributeCode is ".$attributeCode);
                         $attribute = $eavConfig->getAttribute('catalog_product', $attributeCode);
-                        $newOptionId = null;
-                        foreach ($attribute->getSource()->getAllOptions() as $option) {
+                        $options = $attribute->getSource()->getAllOptions();
+                        
+                        // Check if the attribute value exists
+                        $valueExists = false;
+                        foreach ($options as $option) {
                             if ($option['label'] == $attributeResponse['name']) {
-                                $newOptionId = $option['value'];
+                                $magentoProduct->setData($attributeCode, $option['value']);
+                                $valueExists = true;
                                 break;
                             }
                         }
-                        $magentoProduct->setData($attributeCode, $newOptionId);
+                        
+                        // If the value does not exist, create it
+                        if (!$valueExists) {
+                            echo "Adding new attribute ".$attributeResponse['name']."\r\n";
+                            $option = ['value' => [$attributeResponse['name']], 'label' => $attributeResponse['name']];
+                            $attribute->addData(['option' => ['value' => $option]]);
+                            $attributeRepository->save($attribute);
+                            
+                            // Reload to get the new option ID
+                            $attribute = $eavConfig->getAttribute('catalog_product', $attributeCode);
+                            $newOptionId = null;
+                            foreach ($attribute->getSource()->getAllOptions() as $option) {
+                                if ($option['label'] == $attributeResponse['name']) {
+                                    $newOptionId = $option['value'];
+                                    break;
+                                }
+                            }
+                            $magentoProduct->setData($attributeCode, $newOptionId);
+                        }
                     }
                 }
+                
+                /************************
+                 * Set the Category
+                 ************************/ 
+                $brandName = ucwords(strtolower($brand['name']));
+                $categoryCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Category\CollectionFactory');
+                $categories = $categoryCollection->create()
+                ->addAttributeToSelect('*')
+                ->addAttributeToFilter('name', $brandName)
+                ->setPageSize(1);
+                
+                if ($categories->getSize()) {
+                    $categoryId = $categories->getFirstItem()->getId();
+                    $magentoProduct->setCategoryIds([$categoryId]); // Assign the product to the category
+                }
+                
+                // Set the attributes based on your mapping
+                $magentoProduct->setSku($item['sku']);
+                $magentoProduct->setData('manufacturer_sku', $item['supplier_product_id']);
+                $magentoProduct->setName(ucwords(strtolower($item['name'])));
+                $magentoProduct->setPrice($item['list_price']);
+                $magentoProduct->setData('cost', $item['standard_dealer_price']);
+                $magentoProduct->setData('ai_length', $item['length']);
+                $magentoProduct->setData('ai_width', $item['width']);
+                $magentoProduct->setData('ai_height', $item['height']);
+                $magentoProduct->setData('ai_special_box', 0);
+                $magentoProduct->setData('weight', $item['weight']);
+                $magentoProduct->setData('upc_ean', $item['upc']);
+                $magentoProduct->setData('wps_status', $item['status']);
+                if($item['mapp_price'] > 0) $magentoProduct->setData('map_price', $item['mapp_price']);
+                $magentoProduct->setData('visibility', 4);
+                $magentoProduct->setData('status', 1);
+                $magentoProduct->setData('wps_item_id', $item['id']);
+                $magentoProduct->setData('free_shipping', 169);
+                $magentoProduct->setAttributeSetId(12);
+                $magentoProduct->setWebsiteIds([1]);
+                
+                // Save the product
+                $magentoProduct->save();
+                
+                /************************
+                 * Set the Inventory
+                 ************************/
+                setInventory($wpsItemData['data']['inventory'], $magentoProduct, $objectManager);
+                
+                // Set Supplier
+                $supplierObserver = $objectManager->get('\Magestore\SupplierSuccess\Observer\Catalog\ControllerProductSaveAfter');
+                $data = $supplierObserver->processParams($magentoProduct, $suppliers['data']);
+                $supplierObserver->deleteSupplierProduct($magentoProduct->getId(), array_keys($data));
+                $unsaveData = $supplierObserver->modifySupplierProduct($magentoProduct->getId(), $data);
+                if (! empty($unsaveData)) {
+                    $supplierObserver->addSupplierProduct($unsaveData);
+                }
+                
+                echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n";
+                error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/var/log/wps.log');
+                
+                //sleep(1); // Give the API a break
             }
+            //$allItems = array_merge($allItems, $response['data']); 
             
-            /************************
-             * Set the Category
-             ************************/ 
-            $brandName = ucwords(strtolower($brand['name']));
-            $categoryCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Category\CollectionFactory');
-            $categories = $categoryCollection->create()
-            ->addAttributeToSelect('*')
-            ->addAttributeToFilter('name', $brandName)
-            ->setPageSize(1);
-            
-            if ($categories->getSize()) {
-                $categoryId = $categories->getFirstItem()->getId();
-                $magentoProduct->setCategoryIds([$categoryId]); // Assign the product to the category
-            }
-            
-            // Set the attributes based on your mapping
-            $magentoProduct->setSku($item['sku']);
-            $magentoProduct->setData('manufacturer_sku', $item['supplier_product_id']);
-            $magentoProduct->setName(ucwords(strtolower($item['name'])));
-            $magentoProduct->setPrice($item['list_price']);
-            $magentoProduct->setData('cost', $item['standard_dealer_price']);
-            $magentoProduct->setData('ai_length', $item['length']);
-            $magentoProduct->setData('ai_width', $item['width']);
-            $magentoProduct->setData('ai_height', $item['height']);
-            $magentoProduct->setData('ai_special_box', 0);
-            $magentoProduct->setData('weight', $item['weight']);
-            $magentoProduct->setData('upc_ean', $item['upc']);
-            $magentoProduct->setData('wps_status', $item['status']);
-            if($item['mapp_price'] > 0) $magentoProduct->setData('map_price', $item['mapp_price']);
-            $magentoProduct->setData('visibility', 4);
-            $magentoProduct->setData('status', 1);
-            $magentoProduct->setData('wps_item_id', $item['id']);
-            $magentoProduct->setData('free_shipping', 169);
-            $magentoProduct->setAttributeSetId(12);
-            $magentoProduct->setWebsiteIds([1]);
-            
-            // Save the product
-            $magentoProduct->save();
-            
-            /************************
-             * Set the Inventory
-             ************************/
-            setInventory($wpsItemData['data']['inventory'], $magentoProduct, $objectManager);
-            
-            // Set Supplier
-            $supplierObserver = $objectManager->get('\Magestore\SupplierSuccess\Observer\Catalog\ControllerProductSaveAfter');
-            $data = $supplierObserver->processParams($magentoProduct, $suppliers['data']);
-            $supplierObserver->deleteSupplierProduct($magentoProduct->getId(), array_keys($data));
-            $unsaveData = $supplierObserver->modifySupplierProduct($magentoProduct->getId(), $data);
-            if (! empty($unsaveData)) {
-                $supplierObserver->addSupplierProduct($unsaveData);
-            }
-            
-            echo date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n";
-            error_log(date('Y-m-d H:i:s')." - Product created with SKU ".$item['sku']."\r\n", 3, '/home/'.get_current_user().'/public_html/var/log/wps.log');
-            
-            //sleep(1); // Give the API a break
-        }
-        //$allItems = array_merge($allItems, $response['data']); 
+            // Check if there's a next cursor and update the cursor variable
+            $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
+        //} while ($cursor && !$foundLastProcessedItem); // Continue until there's no next cursor
+        } while ($cursor);
+        //return $allItems;
+    } catch (\Exception $e) {
+        // Call custom error handler with exception details
+        customErrorHandler(E_USER_ERROR, $e->getMessage(), $e->getFile(), $e->getLine());
         
-        // Check if there's a next cursor and update the cursor variable
-        $cursor = isset($response['meta']['cursor']['next']) ? $response['meta']['cursor']['next'] : null;
-    //} while ($cursor && !$foundLastProcessedItem); // Continue until there's no next cursor
-    } while ($cursor);
-    //return $allItems;
+        // Optionally, re-throw the exception if you want it to be handled further up the chain
+        throw $e;
+    }
 }
 
 function setInventory($inventory, $product, $objectManager) {
@@ -452,6 +460,29 @@ function updateInventory($apiToken, $objectManager) {
     }
 }
 
+function customErrorHandler($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) {
+        return;
+    }
+    
+    $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+    $errorMsg = "Error caught: severity: {$severity}, Message: {$message}, File: {$file}, Line: {$line}";
+    
+    /** @var \Magento\Framework\Mail\Template\TransportBuilder $transportBuilder */
+    $transportBuilder = $objectManager->get('\Magento\Framework\Mail\Template\TransportBuilder');
+    
+    $transport = $transportBuilder->setTemplateIdentifier('15') // Email template identifier
+    ->setTemplateOptions(['area' => 'frontend', 'store' => \Magento\Store\Model\Store::DEFAULT_STORE_ID])
+    ->setTemplateVars(['data' => ['message' => $errorMsg]])
+    ->setFrom('general') // Email sender
+    ->addTo('casey.ralls@happy-trail.com', 'Casey Ralls')
+    ->getTransport();
+    
+    $transport->sendMessage();
+}
+set_error_handler("customErrorHandler");
+
+
 date_timezone_set("America/Boise");
 $apiToken = getenv('WPS_API_KEY');
 
@@ -471,9 +502,9 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'GMAX') {
+        if ($brand['name'] === 'HIGHWAY 21') {
             $processBrands = true;
-            $lastProcessedItemId = '72-7122X';
+            $lastProcessedItemId = '489-12132T';
         }
         
         if (!$processBrands) {
