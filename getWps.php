@@ -94,7 +94,6 @@ function getBrands($apiToken, $brandId = null) {
 
 function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null) {
     try {
-        throw new Exception("Induced error for testing");
         $base_url = "https://api.wps-inc.com/brands/{$brand['id']}/items";
         
         $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
@@ -127,6 +126,40 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
             
             foreach($response['data'] as $item) {
                 
+                // Try to load the product by manufacturer_sku
+                /*$product = loadProductByManufacturerSku($item['supplier_product_id'], $brand['name'], $objectManager);
+                
+                
+                if ($product) {
+                    
+                    /************************
+                     * Setup Supplier and continue
+                     ************************/
+                    /*$suppliers = array();
+                    $suppliers['data'][] = array(
+                        'id' => 91,
+                        'supplier_code' => 'WP',
+                        'product_supplier_sku' => $item['supplier_product_id'],
+                        'cost' => $item['standard_dealer_price'],
+                        'tax' => 0,
+                        'position' => 1,
+                        'record_id' => 91
+                    );
+                    
+                    // Product exists, update supplier
+                    $supplierObserver = $objectManager->get('\Magestore\SupplierSuccess\Observer\Catalog\ControllerProductSaveAfter');
+                    $data = $supplierObserver->processParams($product, $suppliers['data']);
+                    $supplierObserver->deleteSupplierProduct($product->getId(), array_keys($data));
+                    $unsaveData = $supplierObserver->modifySupplierProduct($product->getId(), $data);
+                    if (!empty($unsaveData)) {
+                        $supplierObserver->addSupplierProduct($unsaveData);
+                    }
+                    
+                    echo date('Y-m-d H:i:s')." - Supplier added on existing Manufacturer SKU ".$item['supplier_product_id']."\r\n";
+                    
+                    continue;
+                }*/
+                
                 try {
                     $existingProduct = $productRepository->get($item['sku']);
                     
@@ -135,6 +168,14 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
                         echo ( "[".date('Y-m-d H:i:s')."] Setting wps_item_id for ".$existingProduct->getSku()." to ".$item['id']."\r\n");
                         $existingProduct->setWpsItemId($item['id']);
                         $productRepository->save($existingProduct);
+                    }
+                    
+                    // Check if cost is set and if not set it
+                    $cost = $existingProduct->getCost() > 0 ? $existingProduct->getCost() : $item['standard_dealer_price'];
+                    if($existingProduct->getCost() != $cost) {
+                        $existingProduct->setCost($cost);
+                        $productRepository->save($existingProduct);
+                        echo "[".date('Y-m-d H:i:s')."] - Updated [SKU: ".$existingProduct->getSku()."] Cost: ".$cost."\r\n";
                     }
                     
                     // If the product exists, skip to the next item
@@ -371,12 +412,27 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
         //return $allItems;
     } catch (\Exception $e) {
         // Call custom error handler with exception details
-        customErrorHandler($e->getMessage(), $e->getFile(), $e->getLine());
+        customErrorHandler($e->getMessage(), $e->getFile(), $e->getLine(), $item['sku']);
         
         // Optionally, re-throw the exception if you want it to be handled further up the chain
         throw $e;
     }
 }
+
+function loadProductByManufacturerSku($manufacturerSku, $brandName, $objectManager) {
+    $manufacturerOptionId = getManufacturerOptionId($brandName, $objectManager);
+    
+    $productRepository = $objectManager->get('Magento\Catalog\Api\ProductRepositoryInterface');
+    $searchCriteriaBuilder = $objectManager->get('Magento\Framework\Api\SearchCriteriaBuilder');
+    
+    $searchCriteria = $searchCriteriaBuilder->addFilter('manufacturer_sku', $manufacturerSku, 'eq')
+    ->addFilter('manufacturer', $manufacturerOptionId, 'eq')
+    ->create();
+    $products = $productRepository->getList($searchCriteria)->getItems();
+    
+    return count($products) > 0 ? reset($products) : null;
+}
+
 
 function setInventory($inventory, $product, $objectManager) {
     $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
@@ -406,30 +462,31 @@ function setInventory($inventory, $product, $objectManager) {
     echo "[".date('Y-m-d H:i:s')."] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($stockItem->getTotalQty() > 0 ? "In Stock" : "Out of Stock") . "\n";
 }
 
-function updateInventory($apiToken, $objectManager) {
+function OldupdateInventory($apiToken, $objectManager) {
     $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
     $stockRegistry = $objectManager->get('Magento\CatalogInventory\Api\StockRegistryInterface');
     $productCollection->addAttributeToSelect('wps_item_id')
-    ->addFieldToFilter('wps_item_id', ['gt' => 0])
-    ->joinField('qty',
+    ->addFieldToFilter('wps_item_id', ['gt' => 0]);
+    
+    /*->joinField('qty',
         'cataloginventory_stock_item',
         'qty',
         'product_id=entity_id',
         'qty <= 0', // Filter for quantity 0 or less
         'left')
         ->getSelect()
-        ->group('e.entity_id'); // Add group by clause
+        ->group('e.entity_id'); // Add group by clause*/
     
-    $foundTargetSku = true;
+    //$foundTargetSku = true;
     foreach ($productCollection as $product) {
         
         // Continue until SKU
-        if (!$foundTargetSku) {
+        /*if (!$foundTargetSku) {
             if ($product->getSku() == '72-7308YL') {
                 $foundTargetSku = true;
             }
             continue;
-        }
+        }*/
         
         $inventoryUrl = "https://api.wps-inc.com/inventory?filter[item_id]={$product->getWpsItemId()}";
         $inventoryData = getData($inventoryUrl, $apiToken);
@@ -445,7 +502,6 @@ function updateInventory($apiToken, $objectManager) {
         $stockChange->update($warehouseId, $productId, $qtyChange);
         
         $stockItem = $stockRegistry->getStockItem($product->getId());
-        $totalQty = $inventoryData['data'][0]['total'];
         
         if ($stockItem->getTotalQty() > 0) {
             $stockItem->setIsInStock(true);
@@ -456,13 +512,51 @@ function updateInventory($apiToken, $objectManager) {
         $stockRegistry->updateStockItemBySku($product->getSku(), $stockItem);
         
         // Echo the SKU of the product that was updated
-        echo "[".date('Y-m-d H:i:s')." - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($stockItem->getTotalQty() > 0 ? "In Stock" : "Out of Stock") . "\n";
+        echo "[".date('Y-m-d H:i:s')."] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($stockItem->getTotalQty() > 0 ? "In Stock" : "Out of Stock") . "\n";
     }
 }
 
-function customErrorHandler($message, $file, $line) {
+function updateInventory($apiToken, $objectManager) {
+    $connection = $objectManager->get('Magento\Framework\App\ResourceConnection')->getConnection();
+    
+    $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
+    $productCollection->addAttributeToSelect('wps_item_id')
+    ->addFieldToFilter('wps_item_id', ['gt' => 0]);
+    
+    foreach ($productCollection as $product) {
+        $inventoryUrl = "https://api.wps-inc.com/inventory?filter[item_id]={$product->getWpsItemId()}";
+        $inventoryData = getData($inventoryUrl, $apiToken);
+        
+        if (!isset($inventoryData['data'][0])) continue;
+        
+        $productId = $product->getId();
+        $qtyChange = $inventoryData['data'][0]['total'];
+        $isInStock = $qtyChange > 0 ? 1 : 0;
+        
+        // Update stock_id = 5
+        $updateQuery = "UPDATE cataloginventory_stock_item SET qty = :qtyChange, is_in_stock = :isInStock WHERE product_id = :productId AND stock_id = 5";
+        $connection->query($updateQuery, ['qtyChange' => $qtyChange, 'isInStock' => $isInStock, 'productId' => $productId]);
+        
+        // Update total quantities for stock_id = 1
+        $aggregateAndUpdateQuery = "UPDATE cataloginventory_stock_item SET qty = (SELECT SUM(qty) FROM cataloginventory_stock_item WHERE product_id = :productId AND stock_id != 1), max_sale_qty = IF((SELECT SUM(qty) FROM cataloginventory_stock_item WHERE product_id = :productId AND stock_id != 1) > 0, (SELECT SUM(qty) FROM cataloginventory_stock_item WHERE product_id = :productId AND stock_id != 1), 1) WHERE product_id = :productId AND stock_id = 1";
+        $connection->query($aggregateAndUpdateQuery, ['productId' => $productId]);
+        
+        // Synchronize qty for stock_id = 5 to be equal to qty for stock_id = 1
+        $syncQtyQuery = "UPDATE cataloginventory_stock_item SET qty = (SELECT qty FROM cataloginventory_stock_item WHERE product_id = :productId AND stock_id = 1) WHERE product_id = :productId AND stock_id = 5";
+        $connection->query($syncQtyQuery, ['productId' => $productId]);
+        
+        echo "[" . date('Y-m-d H:i:s') . "] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($isInStock ? "In Stock" : "Out of Stock") . "\n";
+    }
+}
+
+
+
+
+
+
+function customErrorHandler($message, $file, $line, $sku) {
     $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
-    $errorMsg = "Error caught: Message: {$message}\r\n File: {$file}\r\n Line: {$line}";
+    $errorMsg = "Error caught on $sku: Message: {$message}<br> File: {$file}<br> Line: {$line}";
     
     /** @var \Magento\Framework\Mail\Template\TransportBuilder $transportBuilder */
     $transportBuilder = $objectManager->get('\Magento\Framework\Mail\Template\TransportBuilder');
@@ -500,6 +594,20 @@ function customErrorHandler($message, $file, $line) {
     $inlineTranslation->resume();
 }
 
+function getManufacturerOptionId($manufacturerName, $objectManager) {
+    $eavConfig = $objectManager->get('Magento\Eav\Model\Config');
+    $attribute = $eavConfig->getAttribute('catalog_product', 'manufacturer');
+    $options = $attribute->getSource()->getAllOptions();
+    
+    foreach ($options as $option) {
+        if ($option['label'] == $manufacturerName) {
+            return $option['value'];
+        }
+    }
+    
+    return null;
+}
+
 
 date_default_timezone_set("America/Boise");
 $apiToken = getenv('WPS_API_KEY');
@@ -520,9 +628,10 @@ if (in_array('getItems', $argv)) {
     $processBrands = false;
     
     foreach($allBrands as $brand) {
-        if ($brand['name'] === 'K&L') {
+        // Skip until product
+        if ($brand['name'] === 'AVON') {
             $processBrands = true;
-            $lastProcessedItemId = '135-6355';
+            $lastProcessedItemId = '40-4394HC';
         }
         
         if (!$processBrands) {
@@ -535,7 +644,7 @@ if (in_array('getItems', $argv)) {
 }
 
 if (in_array('updateInventory', $argv)) {
-    getInventory($apiToken, $objectManager);
+    updateInventory($apiToken, $objectManager);
 }
 
 
