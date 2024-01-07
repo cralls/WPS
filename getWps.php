@@ -370,7 +370,7 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
                 $magentoProduct->setData('ai_width', $item['width']);
                 $magentoProduct->setData('ai_height', $item['height']);
                 $magentoProduct->setData('ai_special_box', 0);
-                $magentoProduct->setData('weight', $item['weight']);
+                $magentoProduct->setWeight($item['weight']);
                 $magentoProduct->setData('upc_ean', $item['upc']);
                 $magentoProduct->setData('wps_status', $item['status']);
                 if($item['mapp_price'] > 0) $magentoProduct->setData('map_price', $item['mapp_price']);
@@ -418,6 +418,34 @@ function getItems($brand, $apiToken, $objectManager, $lastProcessedItemId = null
         throw $e;
     }
 }
+
+function updateItems($apiToken, $objectManager, $lastProcessedItemId = null) {
+    $productCollection = $objectManager->create('Magento\Catalog\Model\ResourceModel\Product\Collection');
+    $productCollection->addAttributeToSelect(['entity_id', 'sku', 'wps_item_id', 'cost'])
+    ->addFieldToFilter('accounting_category', 6392);
+    
+    $productCollection->getSelect()->joinLeft(
+        ['cost_table' => 'catalog_product_entity_decimal'],
+        'e.entity_id = cost_table.entity_id AND cost_table.attribute_id = 79',
+        ['cost' => 'cost_table.value']
+        )->where('cost_table.value IS NULL OR cost_table.value = 0');
+        
+        foreach ($productCollection as $product) {
+            if ($lastProcessedItemId && $product->getId() <= $lastProcessedItemId) {
+                continue;
+            }
+            
+            $response = getData("https://api.wps-inc.com/items/{$product->getWpsItemId()}", $apiToken);
+            if (isset($response['data']['standard_dealer_price'])) {
+                $product->setCost($response['data']['standard_dealer_price']);
+                $product->save();
+            }
+            
+            echo "Updated product SKU: " . $product->getSku() . " with cost: " . $response['data']['standard_dealer_price'] . "\n";
+        }
+}
+
+
 
 function loadProductByManufacturerSku($manufacturerSku, $brandName, $objectManager) {
     $manufacturerOptionId = getManufacturerOptionId($brandName, $objectManager);
@@ -545,7 +573,7 @@ function updateInventory($apiToken, $objectManager) {
         $syncQtyQuery = "UPDATE cataloginventory_stock_item SET qty = (SELECT qty FROM cataloginventory_stock_item WHERE product_id = :productId AND stock_id = 1) WHERE product_id = :productId AND stock_id = 5";
         $connection->query($syncQtyQuery, ['productId' => $productId]);
         
-        echo "[" . date('Y-m-d H:i:s') . "] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($isInStock ? "In Stock" : "Out of Stock") . "\n";
+        //echo "[" . date('Y-m-d H:i:s') . "] - Updated SKU: " . $product->getSku() . ", Stock Status: " . ($isInStock ? "In Stock" : "Out of Stock") . "\n";
     }
 }
 
@@ -641,6 +669,11 @@ if (in_array('getItems', $argv)) {
         echo "[".date('Y-m-d H:i:s')."] Starting on ".$brand["name"]."\r\n";
         $items = getItems($brand, $apiToken, $objectManager, $lastProcessedItemId);
     }
+}
+
+if (in_array('updateItems', $argv)) {
+    $lastProcessedItemId = $argv[2] ?? null; // Get the last processed item ID from arguments
+    updateItems(getenv('WPS_API_KEY'), $objectManager, $lastProcessedItemId);
 }
 
 if (in_array('updateInventory', $argv)) {
