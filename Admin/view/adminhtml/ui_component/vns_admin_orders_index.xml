@@ -1,0 +1,159 @@
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">vns_admin_orders_index.vns_admin_orders_grid_data_source</item>
+            <item name="deps" xsi:type="string">vns_admin_orders_index.vns_admin_orders_grid_data_source</item>
+        </item>
+        <item name="spinner" xsi:type="string">spinner_columns</item>
+    </argument>
+    <dataSource name="buildSheetDataSource">
+        <argument name="dataProvider" xsi:type="configurableObject">
+            <argument name="class" xsi:type="string">Magento\Framework\View\Element\UiComponent\DataProvider\DataProvider</argument>
+            <argument name="name" xsi:type="string">vns_admin_orders_grid_data_source</argument>
+            <argument name="primaryFieldName" xsi:type="string">entity_id</argument>
+            <argument name="requestFieldName" xsi:type="string">id</argument>
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/provider</item>
+                    <item name="update_url" xsi:type="url" path="mui/index/render"/>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="indexField" xsi:type="string">entity_id</item>
+                    </item>
+                </item>
+            </argument>
+        </argument>
+    </dataSource>
+	<listingToolbar name="listing_top">
+        <argument name="data" xsi:type="array">
+            <item name="config" xsi:type="array">
+                <item name="template" xsi:type="string">ui/grid/toolbar</item>
+            </item>
+        </argument>
+        <bookmark name="bookmarks" />
+        <columnsControls name="columns_controls" />
+        <filters name="listing_filters" />
+        <massaction name="listing_massaction">
+   			<action name="print_orders">
+        		<argument name="data" xsi:type="array">
+	            	<item name="config" xsi:type="array">
+                		<item name="type" xsi:type="string">print_orders</item>
+                		<item name="url" xsi:type="string">/rocketadmin/vns_admin/orders/printorders</item>
+                		<item name="label" xsi:type="string" translate="true">Print Orders</item>
+            		</item>
+        		</argument>
+    		</action>
+    		<action name="print_manufacturing_orders">
+        		<argument name="data" xsi:type="array">
+	            	<item name="config" xsi:type="array">
+                		<item name="type" xsi:type="string">print_manufacturing_orders</item>
+                		<item name="url" xsi:type="string">/rocketadmin/vns_admin/orders/printmanufacturingorders</item>
+                		<item name="label" xsi:type="string" translate="true">Print Manufacturing Orders</item>
+            		</item>
+        		</argument>
+    		</action>
+			<action name="print_labels">
+        		<argument name="data" xsi:type="array">
+	            	<item name="config" xsi:type="array">
+                		<item name="type" xsi:type="string">print_labels</item>
+                		<item name="url" xsi:type="string">/rocketadmin/vns_admin/orders/printlabels</item>
+                		<item name="label" xsi:type="string" translate="true">Print Labels</item>
+            		</item>
+        		</argument>
+    		</action>
+    		<action name="Convert to UPS">
+        		<argument name="data" xsi:type="array">
+	            	<item name="config" xsi:type="array">
+                		<item name="type" xsi:type="string">convert_ups</item>
+                		<item name="url" xsi:type="string">/rocketadmin/vns_admin/setshipping/index</item>
+                		<item name="label" xsi:type="string" translate="true">Convert to UPS</item>
+            		</item>
+        		</argument>
+    		</action>
+    		<action name="print_shipping_label">
+                <settings>
+                    <url path="adminhtml/order_shipment/massPrintShippingLabel"/>
+                    <type>print_shipping_label</type>
+                    <label translate="true">Print Shipping Labels</label>
+                </settings>
+            </action>
+		</massaction>
+        <!-- Paging -->
+        <paging name="listing_paging">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="provider" xsi:type="string">vns_admin_orders_index.vns_admin_orders_index.listing_top.bookmarks</item>
+                        <item name="namespace" xsi:type="string">current.paging</item>
+                    </item>
+                    <item name="selectProvider" xsi:type="string">vns_admin_orders_index.vns_admin_orders_index.spinner_columns.ids</item>
+                    <item name="displayArea" xsi:type="string">bottom</item>
+                </item>
+            </argument>
+        </paging>
+        <exportButton class="Magento\Ui\Component\ExportButton">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="options" xsi:type="array">
+                        <item name="csv" xsi:type="array">
+                            <item name="value" xsi:type="string">csv</item>
+                            <item name="label" xsi:type="string" translate="true">CSV</item>
+                            <item name="url" xsi:type="string">mui/export/gridToCsv</item>
+                        </item>
+                    </item>
+                </item>
+            </argument>
+        </exportButton>
+    </listingToolbar>
+    <columns name="spinner_columns">
+        <selectionsColumn name="ids">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="resizeEnabled" xsi:type="boolean">false</item>
+                    <item name="resizeDefaultWidth" xsi:type="string">55</item>
+                    <item name="indexField" xsi:type="string">entity_id</item>
+                </item>
+            </argument>
+        </selectionsColumn>
+        <column name="entity_id">
+			<settings>
+                <label translate="true">ID</label>
+            </settings>
+        </column>
+		<column name="increment_id">
+            <settings>
+                <filter>textRange</filter>
+                <label translate="true">Increment ID</label>
+            </settings>
+        </column>
+		<column name="status">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Status</label>
+            </settings>
+        </column>
+		<!-- class="VNS\Admin\Ui\Component\Buildsheet\Column\Shipdate"-->
+		<column name="created_at">
+            <settings>
+                <filter>dateRange</filter>
+                <label translate="true">Purchase Date</label>
+                <sorting>desc</sorting>
+            </settings>
+        </column>
+		<column name="total_qty_ordered">
+            <settings>
+                <label translate="true">Orderred Qty</label>
+            </settings>
+        </column>
+		<column name="grand_total">
+			<settings>
+                <label translate="true">Grand Total</label>
+            </settings>
+        </column>
+		<column name="value">
+			<settings>
+				<filter>text</filter>
+                <label translate="true">Team Portal</label>
+            </settings>
+        </column>
+    </columns>
+</listing>

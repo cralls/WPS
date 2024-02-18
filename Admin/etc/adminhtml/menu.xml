@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="VNS_Admin::team" title="Team Portals" module="VNS_Admin" sortOrder="20" resource="VNS_Admin::team" />
+		<add id="VNS_Admin::orders" title="Orders" module="VNS_Admin" sortOrder="1" parent="VNS_Admin::team" resource="VNS_Admin::orders" action="vns_admin/orders" />
+    </menu>
+</config>
